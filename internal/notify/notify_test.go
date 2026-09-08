@@ -12,6 +12,7 @@ import (
 
 	"github.com/dualface/kander/internal/board"
 	"github.com/dualface/kander/internal/config"
+	"github.com/dualface/kander/internal/testfakes"
 )
 
 func resetLang(t *testing.T) {
@@ -134,9 +135,7 @@ if [ "$1" = "tab" ] && [ "$2" = "close" ]; then
 fi
 exit 1
 `
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfakes.WriteExecutable(t, path, []byte(script))
 }
 
 func writeFakeTmux(t *testing.T, path, log string) {
@@ -202,9 +201,7 @@ fi
 printf '%s\t%s\n' '@9' '%9'
 exit 0
 `
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfakes.WriteExecutable(t, path, []byte(script))
 }
 
 func cardTemplate(title string) string {

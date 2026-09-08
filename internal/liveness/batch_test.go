@@ -14,6 +14,7 @@ import (
 
 	"github.com/dualface/kander/internal/board"
 	"github.com/dualface/kander/internal/config"
+	"github.com/dualface/kander/internal/testfakes"
 )
 
 func batchInputs(count int) []TaskInput {
@@ -47,9 +48,7 @@ fi
 `
 	}
 	script += "exec /bin/sleep 3\n"
-	if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfakes.WriteExecutable(t, filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script))
 	return dir
 }
 
@@ -227,9 +226,7 @@ printf 'start %s\n' "$3" >> "$BATCH_EVENTS"
 printf 'end %s\n' "$3" >> "$BATCH_EVENTS"
 printf '{"result":{"pane":{"pane_id":"%s","agent":"codex","agent_status":"idle","agent_session":{"value":"wanted"}}}}\n' "$3"
 `
-	if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfakes.WriteExecutable(t, filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script))
 	var ids []string
 	for i := 0; i < 4; i++ {
 		id, path := makeWorking(t, "batch-check-"+strconv.Itoa(i), "批量采集")
@@ -254,9 +251,7 @@ func TestObservationRejectsNewIdentityAndKeepsRuntimeSeparate(t *testing.T) {
 	input := batchInputs(1)[0]
 	for _, state := range []string{"idle", "working", "blocked", "done"} {
 		script := "#!/bin/sh\necho '{\"result\":{\"pane\":{\"pane_id\":\"w1:p0\",\"agent\":\"codex\",\"agent_status\":\"" + state + "\",\"agent_session\":{\"value\":\"wanted\"}}}}'\n"
-		if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		testfakes.WriteExecutable(t, filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script))
 		rep := ClassifyTasksContext(context.Background(), []TaskInput{input}, BatchOptions{})[0]
 		if rep.Status != Alive || rep.RuntimeState != state || !rep.ValidFor(input.Entry, input.Text) {
 			t.Fatalf("state conflated with liveness: %+v", rep)

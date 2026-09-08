@@ -16,6 +16,7 @@ import (
 
 	"github.com/dualface/kander/internal/board"
 	"github.com/dualface/kander/internal/config"
+	"github.com/dualface/kander/internal/testfakes"
 )
 
 func resetLang(t *testing.T) {
@@ -149,9 +150,7 @@ fi
 printf '%s\n' "unexpected tmux args: $*" >&2
 exit 1
 `
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfakes.WriteExecutable(t, path, []byte(script))
 }
 
 func writeFakeHerdr(t *testing.T, path string) {
@@ -182,9 +181,7 @@ fi
 printf '%s\n' "unexpected herdr args: $*" >&2
 exit 1
 `
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfakes.WriteExecutable(t, path, []byte(script))
 }
 
 func installPOSIXFakes(t *testing.T, herdr bool) {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dualface/kander/internal/board"
+	"github.com/dualface/kander/internal/testfakes"
 )
 
 func TestClassifyTaskSharesForwardAndReverseDeadline(t *testing.T) {
@@ -37,9 +38,7 @@ fi
 			marker := filepath.Join(t.TempDir(), "reverse-started")
 			t.Setenv("PROBE_REVERSE_STARTED", marker)
 			script += "echo started > \"$PROBE_REVERSE_STARTED\"\nexec /bin/sleep 3\n"
-			if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), channel), []byte(script), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			testfakes.WriteExecutable(t, filepath.Join(os.Getenv("PATH"), channel), []byte(script))
 			text := "- SESSION: codex wanted\n- WINDOW: " + window + "\n"
 			ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 			defer cancel()
@@ -62,12 +61,14 @@ fi
 func TestHerdrRevalidationUsesRemainingBudget(t *testing.T) {
 	resetLang(t)
 	installPOSIXFakes(t, true)
+	// Two 0.1 s stages leave the recheck about half of the 400 ms budget; 0.15 s each left only
+	// the process spawn overhead, which is not enough on a loaded macOS host.
 	script := `#!/bin/sh
 if [ "$2" = list ]; then
- /bin/sleep 0.15
+ /bin/sleep 0.1
  echo '{"result":{"panes":[{"tab_id":"w1:t2","pane_id":"w1:p2","agent":"codex","agent_session":{"value":"wanted"}}]}}'
 elif [ "$3" = w1:p1 ]; then
- /bin/sleep 0.15
+ /bin/sleep 0.1
  echo '{"error":{"code":"pane_not_found"}}' >&2
  exit 1
 else
@@ -77,9 +78,7 @@ fi
 `
 	marker := filepath.Join(t.TempDir(), "recheck")
 	t.Setenv("PROBE_RECHECK_STARTED", marker)
-	if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfakes.WriteExecutable(t, filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script))
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
 	started := time.Now()
@@ -132,9 +131,7 @@ fi
 `
 			}
 			script += "echo ready > \"$PROBE_REVERSE_STARTED\"\nexec /bin/sleep 3\n"
-			if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), channel), []byte(script), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			testfakes.WriteExecutable(t, filepath.Join(os.Getenv("PATH"), channel), []byte(script))
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			done := make(chan Report, 1)

@@ -5,6 +5,7 @@ package board
 import (
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 )
 
@@ -17,7 +18,8 @@ func TestBoardRootOverrideAfterCWDDeletion(t *testing.T) {
 		if err := os.Remove(dir); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := os.Getwd(); err == nil {
+		// macOS keeps answering Getwd with the deleted path, so the precondition only holds on Linux.
+		if _, err := os.Getwd(); err == nil && runtime.GOOS == "linux" {
 			t.Fatal("cwd still available")
 		}
 		got, err := BoardRoot()

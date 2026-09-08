@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dualface/kander/internal/board"
+	"github.com/dualface/kander/internal/testfakes"
 )
 
 func TestReverseLookupOutcomes(t *testing.T) {
@@ -92,9 +93,7 @@ func TestAuditReverseLookupErrorBecomesUnknown(t *testing.T) {
 			if channel == "herdr" {
 				window = "herdr:w1:t1:w1:p1"
 				script := "#!/bin/sh\nif [ \"$2\" = get ]; then\n echo '{\"error\":{\"code\":\"pane_not_found\"}}' >&2\nelse\n echo 'audit lookup failure' >&2\nfi\nexit 1\n"
-				if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script), 0o755); err != nil {
-					t.Fatal(err)
-				}
+				testfakes.WriteExecutable(t, filepath.Join(os.Getenv("PATH"), "herdr"), []byte(script))
 			} else {
 				t.Setenv("KANBAN_TMUX_STALE_PANE", "%1")
 				t.Setenv("KANBAN_TMUX_LIST_PANES_FAIL", "1")
@@ -122,9 +121,7 @@ func TestReverseLookupTimeoutIsUnknown(t *testing.T) {
 			resetLang(t)
 			installPOSIXFakes(t, true)
 			// exec leaves no child holding the output pipe after timeout kills it.
-			if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), channel), []byte("#!/bin/sh\nexec /bin/sleep 30\n"), 0o755); err != nil {
-				t.Fatal(err)
-			}
+			testfakes.WriteExecutable(t, filepath.Join(os.Getenv("PATH"), channel), []byte("#!/bin/sh\nexec /bin/sleep 30\n"))
 			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 			defer cancel()
 			report := staleReport(ctx, board.Entry{TaskID: "timeout"}, TaskSession{Agent: "codex", Reference: "wanted"}, channel, "old", "old pane gone", channel, channel, true)

@@ -43,6 +43,7 @@
 | `internal/tui`      | 裸 `kander` 的终端看板与 Huh 选项面板                                    |
 | `internal/menu`     | doctor/config, 环境探测与修复, 选项面板共用的 `menu.Session`             |
 | `internal/install`  | 首次运行向导, `kander install`, 规则释出与 doctor 修复                     |
+| `internal/testfakes` | 仅供 `_test` 导入: 写入并预热放到 PATH 上的假命令脚本, 规避 macOS 首次执行延迟 |
 
 - 卡片新建统一为 `<task-id>/spec.md`, SIZE 决定 small/large 语义; 公开快照中的 `Entry.Kind`/`TaskSummary.kind` 表示规模 (包内结构扫描 Kind 留空, attachSize 后填入), 物理形态使用 `Entry.IsDirectory()`. 文件卡只读兼容, init 在显式维护窗口通过既有事务迁移; 不能以目录形态判断完成门禁或模型.
 - 运行时看板数据目录仍是主 worktree 的 `kanban/`, 覆盖仍是 `KANBAN_DIR`. 配置键 `kanban_agent` / `kanban_agents` / `models.kanban` 保持 onevoke schema, 不改名.

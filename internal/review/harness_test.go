@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/dualface/kander/internal/testfakes"
 )
 
 type reviewHarness struct {
@@ -30,9 +32,7 @@ type reviewHarness struct {
 
 func writeFake(t *testing.T, path, body string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testfakes.WriteExecutable(t, path, []byte(body))
 }
 
 const fakeCodex = `#!/bin/sh
