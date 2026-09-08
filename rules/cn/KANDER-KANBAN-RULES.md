@@ -133,20 +133,20 @@ foreground/console 归一为 launcher 名.
 - `SIZE: large` 的任务用 `kanban_agents.large`, `SIZE: small` 的任务用 `kanban_agents.small`, 缺省均取 `kanban_agent`.
 - 成功输出规模和实际 Agent.
 - `start` 默认免确认, 将会话标识写入 `SESSION`:
-  - Claude/Grok 为 UUID; Cursor 为 chat id; Codex 只记 Agent 名.
+  - Claude/Grok 为 UUID; Cursor 为 chat id; Codex 与 Kimi 只记 Agent 名.
 - 紧邻的 `WINDOW` 字段写投递地址:
   - herdr: `herdr:<tab-id>:<pane-id>`.
   - tmux/tmux-session: `<launcher>:<session-id>:<window-id>:<pane-id>`.
   - foreground/console: launcher 名.
 - tmux/tmux-session 先建占位 window/pane, 持久化 `WINDOW`, 再 `respawn-pane` 启动 Agent, 用 `tmux set-option -p -t <pane-id> @kander_session <会话-id>` 写 pane 标记.
-- Claude/Grok/Cursor 用卡片 id, Codex 复用 `notify`/`resume` rollout 解析.
+- Claude/Grok/Cursor 用卡片 id, Codex 与 Kimi 复用 `notify`/`resume` 的会话存储解析.
 - 地址写入、启动或标记写入失败均关闭本次 window 并回滚卡片.
 - 旧卡缺两字段时按序插在 `OWNER` 后, 不批量改写未启动旧卡.
 
 **恢复原会话**
 
 - `resume` 按卡片 `SESSION` 唤醒原 Agent, 保留上下文:
-  - Claude/Grok 用 `--resume <uuid>`; Cursor 用 `--resume <chat-id>`.
+  - Claude/Grok 用 `--resume <uuid>`; Cursor 用 `--resume <chat-id>`; Kimi 用 `--session <session-id>`, 首次启动不传任何值, 因为 kimi-code 自行生成 id.
   - Codex 用 `codex resume <session-id>`.
   - Codex session id 在 `CODEX_HOME` (默认 `~/.codex`) 的 rollout 记录中检索.
   - 只匹配以该任务 start/resume prompt 开头的用户消息, 不匹配仅提到任务 ID 的主控会话.
@@ -168,7 +168,7 @@ foreground/console 归一为 launcher 名.
 - 任务文件内要求 Agent 完成后尝试删除, 删除失败或遗留不影响结果.
 - 这类文件不做 POSIX 权限或 Windows ACL 检查与收紧.
 - 原生 Windows 优先使用 Agent `.exe`.
-- Codex, Claude, Grok 或 Cursor 只有 `.cmd`/`.bat` 时, 通过显式 `cmd.exe /d /s /v:off /c` 和 Agent 适配层的参数编码启动.
+- Codex, Claude, Grok, Cursor 或 Kimi 只有 `.cmd`/`.bat` 时, 通过显式 `cmd.exe /d /s /v:off /c` 和 Agent 适配层的参数编码启动.
 
 **接管新会话**
 
@@ -194,7 +194,7 @@ foreground/console 归一为 launcher 名.
 - 它与 `resume` 一样只接受 `review/` 或 `working/` 卡, 必须且只能给非空的 `--message` 或 `--message-file`, `--timeout` 必须是大于 60 的有限秒数且默认 120 秒.
 - 地址优先级为显式 `--pane` 覆盖、卡片 `WINDOW` 快路径、缺窗口时按 Agent 与会话 id 扫描 `herdr pane list`.
 - 覆盖与反查均继续用 `pane get` 验证 pane 存在、Agent 和 `agent_session.value` 完全匹配且既有 pane 状态为 `idle` 或 `done`.
-- 卡片已记录 id 的 Claude/Grok/Cursor 直接比对, 只有缺 id 的旧 Codex 卡复用 `resume` 的 rollout 检索.
+- 卡片已记录 id 的 Claude/Grok/Cursor 直接比对; 缺 id 的 Codex 卡, 以及首次发现之前的 Kimi 卡, 复用 `resume` 的会话检索.
 - Kander 不设 Agent 白名单, herdr 反查覆盖范围取决于当前版本及各 `source: herdr:<agent>` 集成是否实际报告会话身份.
 - 唯一命中后把 `herdr:<tab-id>:<pane-id>` 写回 `WINDOW`.
 - 0 个或多个命中不投递.
@@ -235,7 +235,7 @@ foreground/console 归一为 launcher 名.
 - 投递前复用 `notify` 的 Agent 与会话精确匹配: herdr 另要求 `agent_status` 为 `idle` 或 `done`, tmux 另要求 pane 存活、不在 copy-mode 且前台进程匹配.
 - 被校验 pane 的当前 tab 或 session/window 必须与定位出的容器精确一致, 且容器只能包含该 pane.
 - pane 被移动或容器另有 pane 时必须在投递前拒绝, 等待退出期间再次验证归属并在关闭前复核容器拓扑.
-- Claude/Codex 送 `/exit`, Grok/Cursor 送 `/quit`.
+- Claude/Codex/Kimi 送 `/exit`, Grok/Cursor 送 `/quit`.
 - herdr 用 `agent prompt`, tmux 用 `send-keys -l` 后单独发送 `Enter`.
 - 只有确认 Agent 进程已退出才关 herdr tab 或 tmux window.
 - tmux window 已随 Agent 自动消失时视为已关闭.

@@ -21,17 +21,17 @@
 
 ## Reviewer 选择
 
-- 支持 Codex, Claude, Grok 与 Cursor 四个 reviewer.
+- 支持 Codex, Claude, Grok, Cursor 与 Kimi 五个 reviewer.
 
   所有平台的公开审核入口都是命令根下的 `kander review`, 进入单一门禁实现.
 
   Windows 优先使用 Reviewer `.exe`.
 
-  只有 `.cmd`/`.bat` 时通过显式 `cmd.exe /d /s /v:off /c` 和四种 reviewer 适配层的参数编码启动.
+  只有 `.cmd`/`.bat` 时通过显式 `cmd.exe /d /s /v:off /c` 和五种 reviewer 适配层的参数编码启动.
 
   这不是任意批处理脚本的通用调用契约.
 
-  除下表的 CLI 与隔离参数外, 本文件全部规则对四者一致.
+  除下表的 CLI 与隔离参数外, 本文件全部规则对五者一致.
 
   命令入口按 `KANDER-AGENTS.md`「作用域」选择.
 
@@ -41,14 +41,16 @@
 | Claude   | `claude`   | `claude`       | `--permission-mode plan`, `--tools Read,Grep,Glob`, `--safe-mode`, `--no-session-persistence`                                        |
 | Grok     | `grok`     | `grok`         | `--sandbox read-only`, `--no-memory`, `--no-subagents`                                                                               |
 | Cursor   | `cursor`   | `cursor-agent` | `--print --output-format json --trust`; `CURSOR_CONFIG_DIR` 与 `CURSOR_DATA_DIR` 指向本轮隔离 runtime; 无 `--sandbox` / `--mode ask` |
+| Kimi     | `kimi`     | `kimi`         | `--prompt --output-format stream-json --agent-file <round's definition>`, 其 frontmatter 只放行 `Read, Grep, Glob`; 命令行上不存在隔离标志 |
 
 **Reviewer 隔离**
 
-- Codex, Claude, Grok 只读隔离: Codex 在目标 worktree 内运行只读 shell.
+- Codex, Claude, Grok 与 Kimi 只读隔离: Codex 在目标 worktree 内运行只读 shell.
 - Claude/Grok 在树外 runtime 运行, 只开放读取、搜索工具.
 - Cursor 仅隔离配置与会话到 runtime, 只读靠 prompt 与事后工作树校验, 不事前阻断, 不检测树外写入.
 - 所有平台完整 prompt 写 UTF-8 任务文件, Reviewer 仅接收路径短指令.
-- Grok 保留 `--prompt-file`.
+- Grok 保留 `--prompt-file`. Kimi 没有 prompt 文件也没有 stdin, 同一句简短指令直接内联传给 `--prompt`.
+- Kimi 没有沙箱、权限或工具标志, 且 `--plan` 不能与 `--prompt` 同用. 因此只读来自为本轮写出的 Agent 定义: 其 frontmatter 的工具放行列表就是模型拿到的全部界面, 所以会改动和外联的工具从未暴露, 而不只是被拒绝. `KIMI_CODE_HOME` 保持在 reviewer 的真实 home, 已存凭据无须复制即可继续使用. 因为没有 `--cwd`, 它在目标 worktree 内运行, 并通过 `--add-dir` 读取 prompt、证据和自己的定义.
 - 任务文件不检查或收紧 POSIX 权限、Windows ACL, 位于审核 runtime 时仍受其边界保护.
 - Reviewer 退出后须强制收尽进程组, 失败即审核失败.
 - 当前只有 Cursor 自带不等待收尾的帮手进程, 对其仅将脱离父链的 detached 后代判为残留并拒绝结果, 普通子进程不因此拒绝.
