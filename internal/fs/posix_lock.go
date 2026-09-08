@@ -72,7 +72,7 @@ func OpenLockFile(root, path string) (*os.File, error) {
 		return nil, err
 	}
 	defer parent.close()
-	fd, err := openat(parent.parentFD, parent.name, unix.O_RDWR|unix.O_CREAT, uint32(privateFileMode))
+	fd, err := openOrCreate(parent.parentFD, parent.name, unix.O_RDWR, uint32(privateFileMode))
 	if err != nil {
 		return nil, mapOpenErr("lock-open", path, err)
 	}

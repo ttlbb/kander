@@ -34,6 +34,32 @@ func openat(dirfd int, name string, flags int, mode uint32) (int, error) {
 	return fd, nil
 }
 
+// openOrCreate opens name under a pinned parent, creating it privately when missing. It never
+// passes O_CREAT without O_EXCL: on macOS concurrent creators of the same new entry may see a
+// spurious ENOENT from a plain O_CREAT open, so a missing entry is created exclusively and the
+// race loser simply reopens the winner's file.
+func openOrCreate(parentFD int, name string, flags int, mode uint32) (int, error) {
+	var err error
+	for range 64 {
+		var fd int
+		fd, err = openat(parentFD, name, flags, 0)
+		if err == nil {
+			return fd, nil
+		}
+		if err != unix.ENOENT {
+			return -1, err
+		}
+		fd, err = openat(parentFD, name, flags|unix.O_CREAT|unix.O_EXCL, mode)
+		if err == nil {
+			return fd, nil
+		}
+		if err != unix.EEXIST && err != unix.ENOENT {
+			return -1, err
+		}
+	}
+	return -1, err
+}
+
 func isSymlinkErr(err error) bool {
 	return err == unix.ELOOP || err == unix.ENOTDIR
 }
@@ -332,7 +358,7 @@ func OpenAppendFile(root, path string) (*AppendFile, error) {
 		return nil, err
 	}
 	defer parent.close()
-	fd, err := openat(parent.parentFD, parent.name, unix.O_RDWR|unix.O_CREAT|unix.O_APPEND, 0o666)
+	fd, err := openOrCreate(parent.parentFD, parent.name, unix.O_RDWR|unix.O_APPEND, 0o666)
 	if err != nil {
 		return nil, mapOpenErr("append", parent.path, err)
 	}
