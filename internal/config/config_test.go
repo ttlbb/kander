@@ -1020,3 +1020,57 @@ func TestJSONRoundTripUsesNumberSchema(t *testing.T) {
 		t.Fatal(cfg.SchemaVersion)
 	}
 }
+
+func TestIntegrateAgentRulesDefaultsOnAndSurvivesRoundTrip(t *testing.T) {
+	if !DefaultConfig().IntegrateAgentRules {
+		t.Fatal("a new config must integrate agent rules")
+	}
+	// A config written before the switch existed carries no key and keeps integrating.
+	cfg, err := Validate(minimalPayload(nil))
+	if err != nil || !cfg.IntegrateAgentRules {
+		t.Fatalf("missing key must enable integration: %v %v", cfg, err)
+	}
+	cfg, err = Validate(minimalPayload(map[string]any{"integrate_agent_rules": false}))
+	if err != nil || cfg.IntegrateAgentRules {
+		t.Fatalf("explicit false must be honored: %v %v", cfg, err)
+	}
+	if _, err = Validate(minimalPayload(map[string]any{"integrate_agent_rules": "no"})); err == nil {
+		t.Fatal("a non-boolean must be rejected")
+	}
+}
+
+func TestRepairKeepsIntegrateAgentRulesOff(t *testing.T) {
+	root := setupHome(t)
+	path := filepath.Join(root, "config.json")
+	t.Setenv(EnvConfig, path)
+	cfg := DefaultConfig()
+	cfg.WelcomeComplete = true
+	cfg.IntegrateAgentRules = false
+	if _, err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	repaired, _, err := Repair(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repaired.IntegrateAgentRules {
+		t.Fatal("doctor turned agent rules integration back on")
+	}
+	if AgentRulesIntegrationEnabled(path) {
+		t.Fatal("AgentRulesIntegrationEnabled disagrees with the saved config")
+	}
+}
+
+func TestAgentRulesIntegrationEnabledFallsBackToOn(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "absent.json")
+	broken := filepath.Join(dir, "broken.json")
+	if err := os.WriteFile(broken, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"", missing, broken} {
+		if !AgentRulesIntegrationEnabled(path) {
+			t.Fatalf("path %q must fall back to integrating", path)
+		}
+	}
+}

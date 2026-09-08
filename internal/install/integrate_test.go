@@ -1,6 +1,7 @@
 package install
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -274,5 +275,50 @@ func TestPerformGlobalIntegratesOnlyExistingAgentDirs(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".cursor")); !os.IsNotExist(err) {
 		t.Fatal("created a directory for an absent agent")
+	}
+}
+
+func TestPerformSkipsIntegrationWhenSwitchedOff(t *testing.T) {
+	home := setupInstallHome(t)
+	for _, dir := range []string{".claude", ".codex"} {
+		if err := os.Mkdir(filepath.Join(home, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paths, err := config.GlobalInstallPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(paths.ConfigPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.DefaultConfig()
+	cfg.WelcomeComplete = true
+	cfg.IntegrateAgentRules = false
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.ConfigPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Perform(Request{Language: "cn", Source: stubBinary(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Integrations) != 0 {
+		t.Fatalf("integrations=%+v", result.Integrations)
+	}
+	for _, target := range []string{
+		filepath.Join(home, ".claude", "CLAUDE.md"),
+		filepath.Join(home, ".codex", "AGENTS.md"),
+	} {
+		if _, err := os.Stat(target); !os.IsNotExist(err) {
+			t.Fatalf("%s was written while integration is off: %v", target, err)
+		}
+	}
+	// The rules themselves still land; only the agent rules files are left alone.
+	if _, err := os.Stat(filepath.Join(home, ".agents", "KANDER-AGENTS.md")); err != nil {
+		t.Fatal(err)
 	}
 }

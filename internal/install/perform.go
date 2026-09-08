@@ -106,7 +106,9 @@ func Perform(req Request) (Result, error) {
 		return result, err
 	}
 	cleanupAgentsEntryLink(paths)
-	result.Integrations = integrateAgentRules(paths)
+	if config.AgentRulesIntegrationEnabled(paths.ConfigPath) {
+		result.Integrations = integrateAgentRules(paths)
+	}
 	if req.DeleteLegacy && len(result.Legacy) > 0 {
 		if !destIsExecutable(dest) {
 			return result, fmt.Errorf("%s", config.Text("install.new_entry_not_executable", dest))

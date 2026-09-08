@@ -319,3 +319,29 @@ func SaveIfUnchanged(cfg, baseline *Config) (string, error) {
 	})
 	return saved, err
 }
+
+// AgentRulesIntegrationEnabled reports whether the config at path allows install and doctor to
+// write the Kander entry reference into agent rules files. A missing, unreadable, or malformed
+// config enables it, so a first install still connects the agents it finds.
+func AgentRulesIntegrationEnabled(path string) bool {
+	if path == "" {
+		return true
+	}
+	data, err := readConfigBytes(path)
+	if err != nil || data == nil {
+		return true
+	}
+	raw, err := decodeJSON(data)
+	if err != nil {
+		return true
+	}
+	obj, ok := asObject(raw)
+	if !ok {
+		return true
+	}
+	value, ok := obj["integrate_agent_rules"].(bool)
+	if !ok {
+		return true
+	}
+	return value
+}

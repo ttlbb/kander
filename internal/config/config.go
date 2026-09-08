@@ -185,19 +185,23 @@ type TUI struct {
 
 // Config is the schema-validated configuration.
 type Config struct {
-	SchemaVersion   int                        `json:"schema_version"`
-	WelcomeComplete bool                       `json:"welcome_complete"`
-	KanbanAgent     string                     `json:"kanban_agent"`
-	KanbanAgents    map[string]string          `json:"kanban_agents"`
-	Launcher        string                     `json:"launcher"`
-	Reviewers       map[string]string          `json:"reviewers"`
-	ReviewStages    map[string]string          `json:"review_stages"`
-	Rules           Rules                      `json:"rules"`
-	Models          Models                     `json:"models"`
-	TUI             TUI                        `json:"tui"`
-	Language        string                     `json:"language"`
-	AgentLanguage   string                     `json:"agent_language"`
-	Agents          map[string]AgentDefinition `json:"agents,omitempty"`
+	SchemaVersion   int               `json:"schema_version"`
+	WelcomeComplete bool              `json:"welcome_complete"`
+	KanbanAgent     string            `json:"kanban_agent"`
+	KanbanAgents    map[string]string `json:"kanban_agents"`
+	Launcher        string            `json:"launcher"`
+	Reviewers       map[string]string `json:"reviewers"`
+	ReviewStages    map[string]string `json:"review_stages"`
+	Rules           Rules             `json:"rules"`
+	Models          Models            `json:"models"`
+	TUI             TUI               `json:"tui"`
+	Language        string            `json:"language"`
+	AgentLanguage   string            `json:"agent_language"`
+	// IntegrateAgentRules lets install and doctor write the Kander entry reference into each
+	// configured agent's own rules file. Turning it off leaves those files alone; the agent then
+	// only follows these rules when the user points it at the entry some other way.
+	IntegrateAgentRules bool                       `json:"integrate_agent_rules"`
+	Agents              map[string]AgentDefinition `json:"agents,omitempty"`
 }
 
 // Clone deep-copies the config so a long-lived editing session can keep its baseline.
@@ -306,18 +310,19 @@ func DefaultConfig() *Config {
 		reviewers[role] = "codex"
 	}
 	return &Config{
-		SchemaVersion:   SchemaVersion,
-		WelcomeComplete: false,
-		KanbanAgent:     "codex",
-		KanbanAgents:    agents,
-		Launcher:        DefaultLauncher(),
-		Reviewers:       reviewers,
-		ReviewStages:    DefaultReviewStages(),
-		Rules:           DefaultRules(true),
-		Models:          DefaultModels(),
-		TUI:             DefaultTUI(),
-		Language:        "cn",
-		AgentLanguage:   DefaultAgentLanguage("cn"),
+		SchemaVersion:       SchemaVersion,
+		WelcomeComplete:     false,
+		IntegrateAgentRules: true,
+		KanbanAgent:         "codex",
+		KanbanAgents:        agents,
+		Launcher:            DefaultLauncher(),
+		Reviewers:           reviewers,
+		ReviewStages:        DefaultReviewStages(),
+		Rules:               DefaultRules(true),
+		Models:              DefaultModels(),
+		TUI:                 DefaultTUI(),
+		Language:            "cn",
+		AgentLanguage:       DefaultAgentLanguage("cn"),
 	}
 }
 
@@ -809,20 +814,30 @@ func Validate(raw any) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Configs written before this switch existed carry no key; they keep integrating.
+	integrateAgentRules := true
+	if raw, exists := obj["integrate_agent_rules"]; exists {
+		value, ok := raw.(bool)
+		if !ok {
+			return nil, configErrorf("config.integrate_agent_rules_must_be_a_boolean")
+		}
+		integrateAgentRules = value
+	}
 	return &Config{
-		SchemaVersion:   SchemaVersion,
-		WelcomeComplete: welcome,
-		KanbanAgent:     kanbanAgent,
-		KanbanAgents:    kanbanAgents,
-		Launcher:        launcher,
-		Reviewers:       reviewers,
-		ReviewStages:    stages,
-		Rules:           rules,
-		Models:          models,
-		TUI:             tui,
-		Language:        language,
-		AgentLanguage:   agentLanguage,
-		Agents:          definitions,
+		SchemaVersion:       SchemaVersion,
+		WelcomeComplete:     welcome,
+		KanbanAgent:         kanbanAgent,
+		KanbanAgents:        kanbanAgents,
+		Launcher:            launcher,
+		Reviewers:           reviewers,
+		ReviewStages:        stages,
+		Rules:               rules,
+		Models:              models,
+		TUI:                 tui,
+		Language:            language,
+		AgentLanguage:       agentLanguage,
+		IntegrateAgentRules: integrateAgentRules,
+		Agents:              definitions,
 	}, nil
 }
 

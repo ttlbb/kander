@@ -172,7 +172,11 @@ func printDoctorWithTools(tools TerminalTools, repair bool) bool {
 		}
 		healthy = validateConfiguredResources(loaded, agents, paths, tools) && healthy
 		if loaded.WelcomeComplete {
-			healthy = reportRulesIntegration(loaded, paths, repair) && healthy
+			if loaded.IntegrateAgentRules {
+				healthy = reportRulesIntegration(loaded, paths, repair) && healthy
+			} else {
+				note(config.Text("menu.agent_rules_integration_disabled", rulesEntry(paths)))
+			}
 		}
 	}
 	return healthy
