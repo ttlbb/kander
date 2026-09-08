@@ -14,17 +14,21 @@ import (
 
 const stateFileName = "kander-rules-state.json"
 
-// rulesState stamps the digest of every rule file the installer wrote. Older state files also
-// carried a "language" key from the bilingual era; it is ignored on read and dropped on write.
+// rulesState stamps the language and digest of every rule file the installer wrote. State files
+// written while the rules shipped in English only carry no "language" key; they are read as en.
 type rulesState struct {
-	Files map[string]string `json:"files"`
+	Language string            `json:"language"`
+	Files    map[string]string `json:"files"`
 }
 
 // RulesReport is doctor's view of installed rule files versus the embedded copies.
 type RulesReport struct {
-	Missing  []string
-	Outdated []string
-	Modified []string
+	Missing           []string
+	Outdated          []string
+	Modified          []string
+	LanguageDrift     bool
+	InstalledLanguage string
+	ConfigLanguage    string
 }
 
 func loadRulesState(paths config.InstallPaths) (rulesState, error) {
@@ -43,6 +47,9 @@ func loadRulesState(paths config.InstallPaths) (rulesState, error) {
 	}
 	if state.Files == nil {
 		state.Files = map[string]string{}
+	}
+	if state.Language == "" && len(state.Files) > 0 {
+		state.Language = rules.LangEN
 	}
 	return state, nil
 }
@@ -87,13 +94,26 @@ func readInstalledRule(paths config.InstallPaths, name string) ([]byte, bool, er
 	return fs.ReadRegularFileIfExists(anchor, path)
 }
 
-// InspectRules compares installed markdown rules with the embedded copies.
-func InspectRules(paths config.InstallPaths) (RulesReport, error) {
-	var report RulesReport
+// installedLanguage returns the language the installed rules are compared against: the stamped
+// language when present, otherwise the language the configuration selects.
+func installedLanguage(state rulesState, cfgLang string) string {
+	if state.Language != "" {
+		return state.Language
+	}
+	return rules.LangFor(cfgLang)
+}
+
+// InspectRules compares installed markdown rules with the embedded copies in the installed
+// language and reports whether that language differs from the one cfgLang selects.
+func InspectRules(paths config.InstallPaths, cfgLang string) (RulesReport, error) {
+	report := RulesReport{ConfigLanguage: rules.LangFor(cfgLang)}
 	state, err := loadRulesState(paths)
 	if err != nil {
 		return report, err
 	}
+	compareLang := installedLanguage(state, cfgLang)
+	report.InstalledLanguage = compareLang
+	report.LanguageDrift = compareLang != report.ConfigLanguage
 	for _, name := range rules.Names() {
 		data, ok, err := readInstalledRule(paths, name)
 		if err != nil {
@@ -104,7 +124,7 @@ func InspectRules(paths config.InstallPaths) (RulesReport, error) {
 			continue
 		}
 		got := fileHash(data)
-		want, err := rules.Hash(name)
+		want, _, err := rules.Hash(compareLang, name)
 		if err != nil {
 			return report, err
 		}
@@ -140,10 +160,11 @@ func InspectRules(paths config.InstallPaths) (RulesReport, error) {
 	return report, nil
 }
 
-func extractRules(paths config.InstallPaths, project bool) error {
-	state := rulesState{Files: map[string]string{}}
+func extractRules(paths config.InstallPaths, lang string, project bool) error {
+	lang = rules.LangFor(lang)
+	state := rulesState{Language: lang, Files: map[string]string{}}
 	for _, name := range rules.Names() {
-		data, err := rules.File(name)
+		data, _, err := rules.File(lang, name)
 		if err != nil {
 			return err
 		}
@@ -191,9 +212,11 @@ func writeRule(paths config.InstallPaths, name string, data []byte, project bool
 	return true, nil
 }
 
-// RepairRules restores missing and outdated rule files. Locally edited files are left untouched.
-func RepairRules(paths config.InstallPaths) error {
-	report, err := InspectRules(paths)
+// RepairRules restores missing and outdated rule files in the language cfgLang selects. When the
+// installed language differs, every file still matching its stamp is rewritten in the new language
+// and the stamp switches language. Locally edited files are left untouched.
+func RepairRules(paths config.InstallPaths, cfgLang string) error {
+	report, err := InspectRules(paths, cfgLang)
 	if err != nil {
 		return err
 	}
@@ -207,11 +230,32 @@ func RepairRules(paths config.InstallPaths) error {
 	if state.Files == nil {
 		state.Files = map[string]string{}
 	}
+	lang := report.ConfigLanguage
 	changed := false
+	if state.Language != lang {
+		state.Language = lang
+		changed = true
+	}
 	repair := append(append([]string{}, report.Missing...), report.Outdated...)
+	if report.LanguageDrift {
+		modified := map[string]bool{}
+		for _, name := range report.Modified {
+			modified[name] = true
+		}
+		seen := map[string]bool{}
+		for _, name := range repair {
+			seen[name] = true
+		}
+		for _, name := range rules.Names() {
+			if seen[name] || modified[name] {
+				continue
+			}
+			repair = append(repair, name)
+		}
+	}
 	project := paths.Mode == config.ModeProject
 	for _, name := range repair {
-		data, err := rules.File(name)
+		data, _, err := rules.File(lang, name)
 		if err != nil {
 			return err
 		}
@@ -235,7 +279,7 @@ func RepairRules(paths config.InstallPaths) error {
 		if !ok {
 			continue
 		}
-		want, err := rules.Hash(name)
+		want, _, err := rules.Hash(lang, name)
 		if err != nil {
 			return err
 		}
@@ -273,9 +317,13 @@ func cleanupAgentsEntryLink(paths config.InstallPaths) {
 			return
 		}
 		digest := fileHash(data)
-		current, err := rules.Hash("KANDER-AGENTS.md")
-		if err == nil && (digest == current || isPreviousOfficial("KANDER-AGENTS.md", digest)) {
+		if isPreviousOfficial("KANDER-AGENTS.md", digest) {
 			remove = true
+		}
+		for _, lang := range []string{rules.LangEN, rules.LangCN} {
+			if current, _, err := rules.Hash(lang, "KANDER-AGENTS.md"); err == nil && digest == current {
+				remove = true
+			}
 		}
 	}
 	if !remove {

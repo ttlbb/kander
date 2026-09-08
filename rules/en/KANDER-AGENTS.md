@@ -25,12 +25,12 @@ The directory containing this file is the "rules root". It determines the scope 
 
 ## Language
 
-- These rules are written in English and are the only copy; they are not translated per install.
+- These rules ship in English and Chinese. The installer extracts the copy selected by `language` in the configuration (Chinese for `cn`, English otherwise), and `kander doctor` switches the installed copy when that setting changes. Both copies say the same thing, and every command, key, field name, and value is identical between them.
 - `agent_language` in the configuration is the language for talking to the user. Use it for every reply to the user, for card titles and bodies, execution records, completion reports, review reports, and the messages passed to `kander notify` and `kander resume`. When the value is missing or empty, use the language the user writes in.
 - A task card's `LANGUAGE` field takes precedence over the configuration for everything about that card, so a card keeps its language across sessions, takeovers, and configuration changes. `kander new` records the configured value at creation; cards without the field use the configuration.
 - `kander start`, `resume`, and `notify` (direct delivery and recovery) prompts include an explicit English instruction to communicate in that card language (or the configured `agent_language` when the field is missing), so the agent receives it before reading these rules.
 - Commit messages, code comments, and identifiers follow the project's own conventions, not `agent_language`.
-- `language` in the configuration only selects the interface language of the `kander` command itself and does not affect how the agent talks to the user.
+- `language` in the configuration selects the interface language of the `kander` command itself and which copy of these rules is installed; it does not affect how the agent talks to the user.
 
 ## Optional Modules
 

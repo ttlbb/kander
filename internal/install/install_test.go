@@ -2,6 +2,7 @@ package install
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -93,7 +94,7 @@ func TestPerformGlobalInstall(t *testing.T) {
 		t.Fatalf("names=%v", rules.Names())
 	}
 	for _, name := range rules.Names() {
-		data, err := rules.File(name)
+		data, _, err := rules.File("cn", name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +132,7 @@ func TestPerformPreservesExistingAgentsEntry(t *testing.T) {
 func TestPerformRemovesInstallerAgentsEntryCopy(t *testing.T) {
 	home := setupInstallHome(t)
 	agents := filepath.Join(home, ".agents", "AGENTS.md")
-	official, err := rules.File("KANDER-AGENTS.md")
+	official, _, err := rules.File("cn", "KANDER-AGENTS.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +406,7 @@ func TestRepairRulesLeavesModifiedFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := InspectRules(paths)
+	report, err := InspectRules(paths, "cn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +416,7 @@ func TestRepairRulesLeavesModifiedFile(t *testing.T) {
 	if err := os.Remove(filepath.Join(home, ".agents", "KANDER-AGENTS.md")); err != nil {
 		t.Fatal(err)
 	}
-	if err := RepairRules(paths); err != nil {
+	if err := RepairRules(paths, "cn"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".agents", "KANDER-AGENTS.md")); err != nil {
@@ -447,17 +448,17 @@ func TestRepairRulesUpgradesUnstampedOfficial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := InspectRules(paths)
+	report, err := InspectRules(paths, "cn")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(report.Outdated) != 1 || report.Outdated[0] != "KANDER-BASE-RULES.md" {
 		t.Fatalf("outdated=%v modified=%v", report.Outdated, report.Modified)
 	}
-	if err := RepairRules(paths); err != nil {
+	if err := RepairRules(paths, "cn"); err != nil {
 		t.Fatal(err)
 	}
-	want, err := rules.File("KANDER-BASE-RULES.md")
+	want, _, err := rules.File("cn", "KANDER-BASE-RULES.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,14 +490,14 @@ func TestRepairRulesBootstrapsStampWhenCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := InspectRules(paths)
+	report, err := InspectRules(paths, "cn")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(report.Missing)+len(report.Outdated)+len(report.Modified) != 0 {
 		t.Fatalf("%+v", report)
 	}
-	if err := RepairRules(paths); err != nil {
+	if err := RepairRules(paths, "cn"); err != nil {
 		t.Fatal(err)
 	}
 	state, err := loadRulesState(paths)
@@ -573,7 +574,7 @@ func TestGlobalSymlinkRuleIsNotFalseStamped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := InspectRules(paths)
+	report, err := InspectRules(paths, "cn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -779,4 +780,139 @@ func TestWizardDefaultKeepsJapanese(t *testing.T) {
 	if req.Language != "ja" {
 		t.Fatalf("wizard default should stay ja, got %q", req.Language)
 	}
+}
+
+func TestInspectRulesLanguageDriftIsNotUnhealthy(t *testing.T) {
+	setupInstallHome(t)
+	if _, err := Perform(Request{Language: "cn", Source: stubBinary(t)}); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := config.GlobalInstallPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := loadRulesState(paths)
+	if err != nil || state.Language != "cn" {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+	report, err := InspectRules(paths, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.LanguageDrift || report.InstalledLanguage != "cn" || report.ConfigLanguage != "en" {
+		t.Fatalf("%+v", report)
+	}
+	if len(report.Missing)+len(report.Outdated)+len(report.Modified) != 0 {
+		t.Fatalf("%+v", report)
+	}
+	// Japanese has no translation and reads the English rules.
+	if report, err := InspectRules(paths, "ja"); err != nil || !report.LanguageDrift || report.ConfigLanguage != "en" {
+		t.Fatalf("ja: %+v err=%v", report, err)
+	}
+}
+
+func TestPerformEnglishInstallWritesEnglishRules(t *testing.T) {
+	home := setupInstallHome(t)
+	if _, err := Perform(Request{Language: "en", Source: stubBinary(t)}); err != nil {
+		t.Fatal(err)
+	}
+	want, _, err := rules.File("en", "KANDER-AGENTS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(home, ".agents", "KANDER-AGENTS.md"))
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("english rules not installed: %v", err)
+	}
+	paths, err := config.GlobalInstallPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := InspectRules(paths, "en")
+	if err != nil || report.LanguageDrift || len(report.Outdated)+len(report.Modified) != 0 {
+		t.Fatalf("%+v err=%v", report, err)
+	}
+}
+
+func TestRepairRulesSwitchesLanguageOnDrift(t *testing.T) {
+	home := setupInstallHome(t)
+	if _, err := Perform(Request{Language: "cn", Source: stubBinary(t)}); err != nil {
+		t.Fatal(err)
+	}
+	edited := filepath.Join(home, ".agents", "KANDER-CODE-RULES.md")
+	if err := os.WriteFile(edited, []byte("edited locally\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := config.GlobalInstallPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RepairRules(paths, "en"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range rules.Names() {
+		if name == "KANDER-CODE-RULES.md" {
+			continue
+		}
+		want, _, err := rules.File("en", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(home, ".agents", name))
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("%s not switched to english: %v", name, err)
+		}
+	}
+	if got, _ := os.ReadFile(edited); string(got) != "edited locally\n" {
+		t.Fatalf("overwrote modified file: %q", got)
+	}
+	state, err := loadRulesState(paths)
+	if err != nil || state.Language != "en" {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+	report, err := InspectRules(paths, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.LanguageDrift || len(report.Outdated) != 0 || len(report.Modified) != 1 || report.Modified[0] != "KANDER-CODE-RULES.md" {
+		t.Fatalf("%+v", report)
+	}
+}
+
+func TestUnstampedLanguageStateReadsAsEnglish(t *testing.T) {
+	home := setupInstallHome(t)
+	if _, err := Perform(Request{Language: "en", Source: stubBinary(t)}); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := config.GlobalInstallPaths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A state file written while the rules shipped in English only has no language key.
+	statePath := filepath.Join(paths.RulesDir, stateFileName)
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	delete(raw, "language")
+	data, err = json.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err := InspectRules(paths, "en")
+	if err != nil || report.LanguageDrift || report.InstalledLanguage != "en" || len(report.Outdated)+len(report.Modified) != 0 {
+		t.Fatalf("en: %+v err=%v", report, err)
+	}
+	report, err = InspectRules(paths, "cn")
+	if err != nil || !report.LanguageDrift || report.InstalledLanguage != "en" || len(report.Outdated)+len(report.Modified) != 0 {
+		t.Fatalf("cn: %+v err=%v", report, err)
+	}
+	_ = home
 }
