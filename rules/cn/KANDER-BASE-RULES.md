@@ -13,7 +13,7 @@
 - 缺少 run ID 时自动生成并打印到 stderr. 只为恢复或完成发布才复用该 ID, 它绝不会再启动一个 Reviewer. 输入变化即冲突. 同一目标上 PM 与 QA 用不同的 run ID. 进程崩溃后的重试记录为中断证据, 绝不记为 PASS.
 - 原始输出、日志、输入快照、sidecar 与 manifest 留在每张卡的 `reviews/<run_id>/`. 机器所有的 REVIEWS 区每次运行一行 JSON 索引. 工具执行成功与语义上的 PASS 是两回事. 不得把这些产物当临时报告编辑或删除.
 - 发布按卡原子. 部分发布以非零退出, 保留已成功的卡并逐一报告结果. 看板事务中断后, 按其维护要求运行 `kander init`; 然后用同一 run ID 重试完全相同的 review 调用. 未完整发布的运行不能确立完成.
-- 命令维持 Reviewer 只读与输出校验.
+- 命令通过 Codex 与 Grok 的隔离参数维持 Reviewer 只读, 并校验其输出. Claude 与 Cursor 没有只读沙箱: Claude 在树外 runtime 中运行且禁用 `Edit` 与 `Write`, Cursor 只隔离自己的配置与会话, 两者的只读都靠事后检查目标 worktree 的 Git 可见状态来保证, 这检查不到 worktree 之外的写入, 也检查不到其内部被忽略路径的写入.
 - 调用不启用完整审核或 Git 流程, 不要求目标分支为 `develop`.
 
 - 开关不改变参数、数据结构、路径校验或进程隔离. 工具边界失败须报告, 禁用普通文件操作或直接控制 Agent 绕过.

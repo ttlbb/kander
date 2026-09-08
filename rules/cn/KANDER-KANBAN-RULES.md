@@ -46,27 +46,34 @@ KANBAN_DIR="$MAIN_WORKTREE/kanban"
 创建入口、查询和迁移状态只用 `kander`, 禁用 `mv`, `cp` 或文件管理器替代; 正文编辑与同状态形态升级按「入口与文档」「任务规模与分组」执行.
 
 ```text
+kander config [--json]
+kander install
+kander doctor
 kander init [--maintenance] [project-path]
 kander list [--mobile] [backlog|todo|working|review|done|archived|trash]
 kander show [--json] <task-id>
 kander new [--large] [--language <agent language>] <feature|bug|chore|research> <slug> <title...>
-kander move <task-id> <backlog|todo|working|review|done|archived|trash> [--expect-revision <revision>]
+kander move <task-id> <backlog|todo|working|review|done|archived|trash> [--owner <agent>] [--result <result>] [--reason <reason> --decision <reference>] [--duplicate-of <task-id>] [--expect-revision <revision>] [--dispatch-id <id> --execution-epoch <epoch>] [--delivery-commit <full-SHA>] [--disposition <card-relative-path>]
+kander pick [task-id]
+kander update <task-id> --document <relative-path> --file <UTF8-input> --expect-revision <revision> [--contract-decision-file <UTF8-decision>] [--dispatch-id <id> --execution-epoch <epoch>]
+kander start [--agent <configured-agent>] [--launcher auto|tmux|tmux-session|herdr|foreground|console] [task-id]
+kander resume [--agent <configured-agent>] [--timeout SECONDS] (--message TEXT | --message-file FILE) [--launcher ...] [--dispatch-id <id>] [--kind fix|sync|wrap-up] [--base <full-SHA>] [--evidence-file <JSON>] <task-id>
+kander notify [--pane HERDR-PANE-ID] [--timeout SECONDS] (--message TEXT | --message-file FILE) [--dispatch-id <id>] [--kind fix|sync|wrap-up] [--base <full-SHA>] [--evidence-file <JSON>] <task-id>
 kander dispatch prepare <absolute-UTF8-intent.json>
+kander dispatch authorize-wrap-up <absolute-UTF8-request.json>
 kander dispatch show <task-id> <dispatch-id>
 kander dispatch fail|cancel <task-id> <dispatch-id> <dispatch-revision> <reason>
-kander update <task-id> --document <relative-path> --file <UTF8-input> --expect-revision <revision> [--contract-decision-file <UTF8-decision>]
-kander pick [task-id]
-kander start [--agent <configured-agent>] [--launcher auto|tmux|tmux-session|herdr|foreground|console] [task-id]
-kander resume [--agent <configured-agent>] [--timeout SECONDS] (--message TEXT | --message-file FILE) [--launcher ...] <task-id>
-kander notify [--pane HERDR-PANE-ID] [--timeout SECONDS] (--message TEXT | --message-file FILE) <task-id>
 kander dismiss [--timeout SECONDS] <task-id>
 kander check [--all] [task-id ...]
 kander guard-write <path>
 kander subscribe [--refresh SECONDS] [--heartbeat SECONDS] <task-group> <task-id>... [--watch <task-id|task-group-id>...]
-kander            # 打开终端看板
+kander coordinator show|claim|reconcile ...       # 见「协调者检查点」
+kander review ...                                 # 单一 review 入口: KANDER-BASE-RULES.md 与「审核证据完成门禁」
 ```
 
 `kander show` 在卡片正文前输出当前状态与绝对路径, 供写卡前重新定位; `kander move` 成功输出迁移后的新路径. `kander show --json` 返回已提交的 `text`, `revision`, `operation_id` 与 `entry` 位置. `kander guard-write` 是建议性的写入前检查: 放行退出 0, 拒绝非零, 但该检查与外部写入不是原子的. 它不覆盖任意 shell 命令, 外部工具或内部写入. Agent 必须用 `update` 编辑卡片.
+
+`kander pick [task-id]` 经与 `kander move <task-id> todo` 相同的门禁把 `backlog/` 卡迁入 `todo/`; 两者可互换. 不给任务 ID 时列出 `backlog/` 卡并询问选哪一张; 自动化传入 ID. 状态名之后的 move 选项见「入口与文档」与「持久派发」. `kander review` 之后的 `plan`, `extend-plan`, `assign`, `disposition`, `map-legacy`, `aggregate`, `advance`, `close` 与 `progress` 选择证据子命令; 可选的 Reviewer 参数只接受 `KANDER-REVIEW-RULES.md` 中的四个 Reviewer 名.
 
 新写使用 `@kander_session`、`@kander_project` 与 `# kander-notify:`.
 
@@ -100,14 +107,14 @@ foreground/console 归一为 launcher 名.
 
 显式 `--pane` 覆盖不做过期地址反查.
 
-**持久派发 (优先于旧版通知条款)**
+**持久派发**
 
-- 组审核卡自动使用持久派发. 显式 `--kind fix|sync|wrap-up`, `--dispatch-id` 或 `--base <full-SHA>` 为 working 卡或非组卡选用它. 默认 kind 为 fix. 集成后的完成须显式选择 wrap-up. 不带 base 的新请求使用当前工作目录的 Git HEAD.
+- 本节优先于本文件的旧版通知条款. `review/` 中属于任务组或已带 `DISPATCH_ID` 的卡自动使用持久派发. 显式 `--kind fix|sync|wrap-up`, `--dispatch-id`, `--base <full-SHA>` 或 `--evidence-file` 为 `working/` 卡及非组卡选用它; 都不给时, 发给 `working/` 卡的消息是未绑定的旧版消息. 默认 kind 为 fix. 集成后的完成须显式选择 wrap-up. 不带 base 的新请求使用当前工作目录的 Git HEAD.
 - `notify` 与 `resume` 接受这些参数. 省略 ID 时在任何发送前先输出生成的 ID; 记录该 ID 并在重试时复用. 同一 ID 必须保持相同的任务, 消息, kind, 基线与引用. 准备是幂等的; 输入改变即冲突. 重试默认复用原基线与截止时间.
 - `dispatch prepare` 的显式 UTF-8 intent 含 `dispatch_id` (可选), `task_id`, `kind`, `message`, `base`, 可选 `references` (任务 ID 加卡片相对 `path`), `created_at` 与 `confirm_by`. 默认接受截止时间为创建后 120 秒; 新的 notify/resume 请求用各自的 timeout. 它不因重启/重试重置, 也不是工作完成截止时间.
 - 新 fix intent 须有 `evidence.fix`: 批次 ID, 非空的 run/finding 引用及精确的 `previous_run_id`, 以及对这些 finding 上所有既有作者原件及其显式谱系的引用. 每个作者引用保留其原作者, run/finding ID, 记录 ID, 任务 ID 与卡片相对 artifact 路径. 不要求尚未写出的 disposition. 当前批次目标必须与 base 一致; 分派必须包含该任务; 所有已发布的原件与副本必须通过校验. 已被取代的轮次, 缺失/外来的 finding 与不完整的发布在发送前拒绝. 旧版散文只用审核生产者的显式映射, 决不用推断的 ID.
 - 通过 `--evidence-file <JSON>` 向 notify/resume 传入绑定, 或在 dispatch prepare 中作为 `evidence` 传入. 同 ID 重试保留已冻结的绑定; 复用时省略 evidence 文件. 之后的作者记录决不改写更早的派发. 通用 `references` 不能替代语义证据. 历史未绑定 intent 仍可读取以供对账, 但不能作为新的 fix/wrap-up 动作发送.
-- 新 wrap-up intent 须有 `evidence.wrap_up.git`, 含绝对 CWD, source_commit, target_commit, target_ref (`refs/heads/develop` 或 `refs/remotes/origin/develop`), author 与 basis. 命令绑定已关闭审核的 base/target, 校验 source 与 target 到所选 develop 引用的祖先关系, 再重读该 ref. 默认 source 必须等于已关闭审核的 target; 不包含额外未审核的 commit. 经授权 rebase 后, 显式提供 rebased_base: 命令校验 base 祖先关系并比较完整的已审核/已 rebase 补丁, 只归一化 blob hash 与 hunk 行偏移, 保留空白, 上下文, 模式与二进制改动. 补丁不同即拒绝, 须走既有的冲突校验/审核流程. fetch 与集成授权仍是主控的职责. 不得以声称的 PR 合并或等价性替代此证据. 集成证据原子存放在同一派发的卡片相对 `dispatches/<id>/integration.json`; 以该 source_commit 完成. 看板校验结构, Git 感知的命令校验 Git.
+- 新 wrap-up intent 须有 `evidence.wrap_up.git`, 含绝对 CWD, source_commit, target_commit, target_ref (`refs/heads/develop` 或 `refs/remotes/origin/develop`), author 与 basis. 命令绑定首个已规划批次的 base 与计划中为最后一个批次记录的 target (即该批次加入时的 target; 之后的 fix 推进不反映在那里, 见「审核证据完成门禁」), 校验 source 与 target 到所选 develop 引用的祖先关系, 再重读该 ref. `source_commit` 必须等于派发 base, 因此只要它不同于命令运行目录的 HEAD, 就显式传 `--base <source_commit>`. 默认 source 必须等于计划中为最后一个批次记录的 target; 不包含额外未审核的 commit. 经授权 rebase 后, 显式提供 rebased_base: 命令校验 base 祖先关系并比较记录范围与 rebase 后范围的完整补丁, 只归一化 blob hash 与 hunk 行偏移, 保留空白, 上下文, 模式与二进制改动. 补丁不同即拒绝; 主控随即停止并按 `KANDER-TASK-GROUP-RULES.md`「合回与清理前置」报告. fetch 与集成授权仍是主控的职责. 不得以声称的 PR 合并或等价性替代此证据. 集成证据原子存放在同一派发的卡片相对 `dispatches/<id>/integration.json`; 以该 source_commit 完成. 看板校验结构, Git 感知的命令校验 Git.
 - 代做 wrap-up 须用 `dispatch authorize-wrap-up <request.json>`, 含 task_id, dispatch_id, expected_revision (派发 revision), author 与 reason. 不存在 intent 时附带完整的 wrap-up `intent`, 使用相同的显式任务/派发 ID. 命令先创建它, 在投递租约下对账回执, 再要求新的身份有效的已停止观察. 缺 SESSION, 普通非零返回, 投递未知, 执行者活跃, 确认超时与租约过期都不能证明已退出. 可选的 reclaim_decision 引用此前用户对已完成回收的授权; 它既不执行回收, 也不替代已停止观察.
 - 授权事务对卡片/派发 revision 做 CAS, 归档并隔离旧 epoch, 再签发仅限 wrap-up 的 epoch, 附独立的 120 秒接受截止时间, 保留原 intent 截止时间. 已有授予时对账它而不再签发. 通过普通的原子 working 回执接受; 只允许此前已授权的清理与仅追加的 wrap-up 记录. 不改代码, 不启动/投递, 不做普通接管升级, 不写运行时身份, 不做原作者结论. 追加 WRAP_UP_RECORDS 前保留整个 spec, 或创建不可变的 `wrap-up/<dispatch-id>-<epoch>.md` 记录. 旧 epoch 的写入仍被拒绝. 这些隔离覆盖受控入口, 不覆盖任意本地文件系统或 Git 操作.
 - 状态为 prepared, delivery-unknown, accepted, completed, failed 与 cancelled. 在发送/启动边界前持久化 delivery-unknown. 传输返回值与 marker 回显决不表示已接受. 发送失败不确定时保留 intent 与载荷; 不立即启动另一个执行者.
@@ -153,8 +160,8 @@ foreground/console 归一为 launcher 名.
   - 找不到则失败.
 - 只接受 `review/` 或 `working/` 中的卡, 必须且只能给非空的 `--message` 或 `--message-file`.
 - `--timeout` 必须是大于 60 的有限秒数且默认 120 秒.
-- `resume` 不迁移卡片状态: `review/` 卡的 prompt 会要求被唤醒的 Agent 先自行执行 `kander move <task-id> working` 再处理事项.
-- 启动或存活校验失败时恢复原文档; 文档恢复失败时报错写明卡片实际所在目录.
+- `resume` 不迁移卡片状态: `review/` 卡的 prompt 会要求被唤醒的 Agent 先执行「命令契约」所述的 `review -> working` 迁移 (未绑定消息为普通迁移, 持久派发为 ID/epoch 绑定的迁移) 再处理事项.
+- 启动或存活校验失败时, 仅在本操作仍持有当前 revision 时恢复原文档, 否则报告冲突并保留更新的正文; 文档恢复失败时报错写明卡片实际所在目录.
 - launcher 与 `start` 相同.
 - 拉起后复用 `notify` 恢复分支的同一存活判据, herdr 与 tmux/tmux-session 校验可寻址终端, foreground 与 console 在完整 timeout 观察期内要求进程不退出.
 - herdr 校验本次 `tab create` 直接返回的 pane: `agent` 必须匹配且状态只接受 `idle`, `working`, `blocked`.
@@ -214,7 +221,7 @@ foreground/console 归一为 launcher 名.
 - tmux 继续用 `send-keys -l` 后单独发送 `Enter`.
 - herdr 用 `pane wait-output --match <marker> --source recent` 做字面子串匹配, 允许 TUI 在 marker 前加渲染前缀.
 - tmux 用有界 `capture-pane` 并按字面子串确认 marker, 同样允许渲染前缀.
-- 投递动作成功即成功返回, 命令不迁移卡片; `review/` 卡的消息正文会前置「先执行 `kander move <task-id> working` 再处理事项」的要求, 该状态变化即为开工回执.
+- 投递动作成功即成功返回, 命令不迁移卡片; `review/` 卡的消息正文会前置「先执行 `review -> working` 迁移 (未绑定消息为普通迁移, 持久派发为 ID/epoch 绑定的迁移) 再处理事项」的要求, 该迁移即为开工回执, 见「命令契约」.
 - marker 超时只警告「已投递, 未在超时内确认」, 不恢复第二个进程.
 - foreground/console、无直投通道、探查或投递动作失败才由命令内部恢复原会话.
 - process 型恢复必须在完整 timeout 观察期内保持存活, foreground 验证后继续占用当前终端直至 Agent 退出.
@@ -259,13 +266,13 @@ foreground/console 归一为 launcher 名.
   - 同项目共用一个 session, 每卡一个后台 window.
   - 不要求 `start` 在 tmux 内运行; 启动后不切换客户端.
   - 输出 session 名、window id 和 attach 提示.
-- `herdr` 要求 `HERDR_ENV=1` 且 herdr 在 PATH, 在当前 workspace 后台新建 tab (`--no-focus`, 标签复用 `window_name()`) 后先等根 pane 就绪, 再在该 pane 执行与 tmux 相同的 Agent 命令, 不使用 `herdr agent start`.
+- `herdr` 要求 `HERDR_ENV=1`, `HERDR_WORKSPACE_ID` 且 herdr 在 PATH, 在当前 workspace 后台新建 tab (`--no-focus`, 标签复用 `window_name()`) 后先等根 pane 就绪, 再在该 pane 执行与 tmux 相同的 Agent 命令, 不使用 `herdr agent start`.
 - `foreground` 在当前终端前台运行并等待 Agent 退出.
 - `console` 仅支持原生 Windows, 在独立控制台窗口启动 Agent 后立即返回 PID.
 - `console` 没有 session/window 复用、attach 或输出抓取能力, 不是 tmux 或 `tmux-session` 的等价实现.
 - POSIX 默认 `auto`, Windows 默认 `console`.
-- Windows 拒绝 `tmux` 和 `tmux-session`; herdr 有原生 Windows 版本, `herdr` 在 Windows 可用, 选项面板在装了 herdr 时提供它.
-- 配置同样接受 Windows 上的 `auto`, 但它在 Windows 只会落到 herdr; 选项面板不提供 `auto`.
+- Windows 拒绝 `tmux` 和 `tmux-session`; herdr 有原生 Windows 版本, `herdr` 在 Windows 可用.
+- 配置同样接受 Windows 上的 `auto`, 但它在 Windows 只会落到 herdr.
 - 送进终端容器的 Agent 命令要经该容器的 shell 再解析一次: POSIX 按 sh 拼接; Windows 假定 herdr pane 是 PowerShell, argv 一律编码进 `%VAR%` 变量后由 `cmd.exe /d /s /v:off /c` 还原, 不依赖 PowerShell 向原生程序传参.
 - Agent 命令含换行或 NUL 时拒绝启动, 不向容器发送半条命令.
 
@@ -283,7 +290,7 @@ foreground/console 归一为 launcher 名.
 **检查与存活分类**
 
 - `check` 默认检查除 `done/` `archived/` 外的无效入口, 有错非零退出.
-- 对 `todo/`, `working/`, `review/` 卡另检查契约完整性: 必填章节缺失或残留 `<FILL_IN>` 占位符、验收条件没有 `- [ ]` 条目, 均计入无效项.
+- 对 `todo/`, `working/`, `review/` 卡另按与 `todo/` 入口门禁相同的规则检查契约完整性: `GOAL`, `EXPECTED_OUTCOME`, `ACCEPTANCE_CRITERIA` 或 `OUT_OF_SCOPE` 缺失或为空, 这四个章节中任一残留 `<FILL_IN>` 占位符, 或验收条件没有 `- [ ]` 条目, 均计入无效项.
 - `--all` 纳入两栏.
 - 指定任务 ID 时仅检查目标及跨状态/形态冲突, 无关无效入口不影响结果, 目标在 `done/` 或 `archived/` 也检查.
 - 均解析适用卡片的 `PREREQUISITES`, 确认引用存在、依赖无环.
@@ -305,7 +312,6 @@ foreground/console 归一为 launcher 名.
 - `subscribe` 须显式组 ID 和非空成员 ID, 校验成员归属.
 - `--watch` 可重复指定外部卡或组 ID; 保留原始组引用, 每次观察时经共享的看板成员读取口重新展开. 外部任务不必属于被订阅的组.
 - 外部目标不存在、展开为空、与成员重复或展开相互重复时, 订阅前失败.
-- 裸 `kander` 只读展示看板, 不创建、迁移或启动 Agent.
 
 **订阅事件**
 
@@ -328,55 +334,6 @@ foreground/console 归一为 launcher 名.
 - `--refresh` 默认 1 秒. `--heartbeat` 默认 900 秒, 在 snapshot 入队后开始, 且仅在每次心跳入队后重新计时, 即使没有任务处于 working.
 - 两个间隔都必须有限, 至少 `1e-9` 秒 (1 ns), 且小于 `9223372036.854776` 秒. 纳秒以下的小数截断.
 
-**看板显示与操作**
-
-- 裸 `kander` 在 alt-screen 启动 TUI, 加载与报错均在备用屏幕内, 退出恢复终端.
-- 同屏默认 5 栏, `-`/`=` 增减并保存.
-- 栏宽平分终端, 放不下「设定栏数 × 最小宽度」时减栏, 至少一栏, 切换时保持选中栏可见.
-- 栏目为圆角面板, 名称与任务数嵌上边框, 两端箭头提示更多栏目.
-- 选中栏边框高亮栏目色, 其余低对比度.
-- 卡片标题用栏目色, 选中卡整块反色.
-- 主题、刷新、单栏等偏好读 `config.json` 的 `tui` 段, 在选项面板修改.
-- 单行顶栏左侧标题与搜索框, 右侧栏数与更新时间, 下留一行空白.
-- 底部状态栏左侧栏目数与卡片数, 右侧两个常用按键, 临时复制结果或错误占整栏.
-- 方向键或 `hjkl` 切栏目/任务.
-- 单击聚焦或选卡, 双击详情, 拖选文本自动复制到系统剪贴板.
-- 滚轮翻卡或滚正文, PgUp/PgDn 翻页.
-- `/` 或点顶栏搜索区搜索, `y` 复制任务 ID, Enter 开详情, `a` 切存档栏, `t` 循环 auto/light/dark, `o` 开选项, `?` 开按键浮层 (任意键关闭), `r` 刷新, `q` 退出.
-- 搜索覆盖标题、任务 ID、任务组、类型、负责人、状态.
-- 详情用同款面板与嵌边框标题, 正文按 Markdown 渲染.
-- `hjkl`/方向键移动光标, 滚轮滚动, Ctrl-d/u 半页, Ctrl-f/b 或 PgUp/PgDn 整页, `gg`/`G` 到顶/底, `/` 搜正文, `n`/`N` 跳匹配, `v`/`V` 字符/行选择后 `y` 复制, 拖选也自动复制.
-- 默认每 30 秒按任务 ID 原位刷新, 尽量保留选中项与滚动位置.
-- 扫描忽略无效入口, 不注入 CLI「运行 kander check 查看」警告.
-- Go TUI 支持 Windows.
-- 库初始化失败须报告原因.
-
-**选项面板**
-
-- `o` 打开选项面板.
-- 分区: 界面偏好 (主题、最大同屏栏数、最小栏宽、自动刷新、单栏、全部栏目、默认语言).
-- 任务执行与模型 (大/小任务 Agent、模型、推理档位、launcher).
-- 审核与模型 (四角色 Reviewer、环节策略、模型、推理档位).
-- 规则模块 (七个开关, 可逐项、全开、全关, 任务组依赖 Git).
-- 可就地检查环境.
-- 标签在值上方或同行, 暗色标签、粗体值, 聚焦值加左右箭头.
-- 同 Agent/角色字段不留空行, 不同 Agent/角色间空一行.
-- 模型、推理档位和审核环节缩进一级, launcher 独立置任务执行屏末尾.
-- 大小任务和四个角色各有独立模型与推理档位, 共用 Agent/Reviewer 也不合并.
-- 角色缺值时填所选 Reviewer 默认值, 更换 Reviewer 时重置该角色默认值.
-- 更换 Agent/Reviewer 后同屏模型字段同步更新.
-- 配置统一写 `config.json`: `tui` 偏好立即生效并保存, 不夹带其他未保存改动.
-- 其余分区 Enter 提交, 根菜单「保存并应用」保存当前配置.
-- 不读、迁移或删旧 `tui.json`.
-- `↑`/`↓` 移字段, `←`/`→` 改值, `Enter` 提交本节并返回.
-- 改值即写内存会话, `Esc` 返回且保留改值.
-- 安装 tmux 等环境副作用仅在整节 `Enter` 确认后执行.
-- `q` 或再次 `o` 关闭.
-- 有未保存改动时选择「保存并关闭 / 放弃改动并关闭 / 继续编辑」.
-- 标题常驻未保存标记.
-- 鼠标点击行聚焦, 再点或双击确认, 滚轮移行.
-- 面板只读写配置, 不创建、迁移或启动任务卡.
-
 - 命令只做结构和机械校验; 授权, 依赖和终止理由由 Agent 按本文件判断.
 
 ## 状态模型
@@ -386,7 +343,7 @@ foreground/console 归一为 launcher 名.
 - `backlog/`: 已记录但尚未承诺执行.
 - `todo/`: 用户已确认, 契约完整, 尚未领取.
 - `working/`: 已领取, 正在实现, 验证, 审核或集成; 任务组卡在修复轮次和集成后的收尾也回到这里.
-- `review/`: 仅任务组卡使用. 开发、验证和任务分支交付记录已完成, 等主控将该交付 ff 到组分支, 再安排适用审核与最终集成. 此状态本身不保证交付已进组分支, 主控须核对后才能放行组内依赖. 执行 Agent 迁入后结束本轮响应并保留交互式 CLI 会话; 修复、同步或集成成功后的收尾由主控 `notify` 派回, 原执行 Agent 收到后先自行 `kander move <task-id> working` 再处理.
+- `review/`: 仅任务组卡使用. 开发、验证和任务分支交付记录已完成, 等主控将该交付 ff 到组分支, 再安排适用审核与最终集成. 此状态本身不保证交付已进组分支, 主控须核对后才能放行组内依赖. 执行 Agent 迁入后结束本轮响应并保留交互式 CLI 会话; 修复、同步或集成成功后的收尾由主控 `notify` 派回, 原执行 Agent 收到后先自行运行派发 prompt 中 ID/epoch 绑定的 `kander move <task-id> working --dispatch-id <id> --execution-epoch <epoch>` 再处理.
 - `done/`: 已满足完成门禁的近期任务.
 - `archived/`: 不占活跃看板的完成, 取消, 重复或不修复记录.
 - `trash/`: 用户明确要求删除, 但尚未永久清理的入口; 不是任务状态.
@@ -394,15 +351,17 @@ foreground/console 归一为 launcher 名.
 ```text
 backlog <-> todo -> working -> done -> archived        (单卡流程)
                       |  ^
-                      v  |  修复轮次与收尾迁回 working
-                    review -> done                     (任务组流程; 直迁仅限主控代做收尾)
+                      v  |  修复轮次与收尾以 ID/epoch 绑定的迁移迁回 working
+                    review -> working -> done         (任务组流程; 主控代做收尾
+                                                       在其隔离授予下走同一路径)
 
 todo -> backlog                                       取消承诺, 退回待排期
+review -> working (--owner)                           用户授权回收未绑定的卡, 见「领取, 启动与协调」
 backlog, todo, working, review -> archived            仅限用户授权的终止
 除 trash 外任意状态 -> trash                            仅限用户明确要求
 ```
 
-- 进 `todo/` 须完成 `GOAL`, `EXPECTED_OUTCOME`, `ACCEPTANCE_CRITERIA` (至少一条顶层 `- [ ]` 且有内容的可判定条目) 和 `OUT_OF_SCOPE`, 且这四个章节不残留 `<FILL_IN>` 占位符, 并附「建卡后自审」的 `SELF_REVIEW:` 记录行 (大任务与任务组成员卡另附 `CARD_REVIEW:` 行); 进 `review/` 须已填写 `TASK_BRANCH`; 进 `done/` 的门禁见「执行与完成」, 其余见「终止与清理」.
+- 进 `todo/` 须完成 `GOAL`, `EXPECTED_OUTCOME`, `ACCEPTANCE_CRITERIA` (至少一条顶层 `- [ ]` 且有内容的可判定条目) 和 `OUT_OF_SCOPE`, 且这四个章节不残留 `<FILL_IN>` 占位符, 并附「建卡后自审」的 `SELF_REVIEW:` 记录行 (大任务与任务组成员卡另附 `CARD_REVIEW:` 行); 进 `review/` 须已填写 `TASK_BRANCH`; 进 `done/` 的门禁见「执行与完成」与「审核证据完成门禁」, 其余见「终止与清理」.
 - 旧版看板没有 `review/`: 其余 6 个状态目录齐全时, 任一 `kander` 命令首次定位看板即自动补建 `review/`, 不要求用户重跑 `init`.
 
   其他状态目录缺失时停止普通看板操作, 可用前述初始化命令补建.
@@ -500,17 +459,15 @@ backlog, todo, working, review -> archived            仅限用户授权的终�
 ### 契约与记录
 
 - `LANGUAGE` 是为用户就此卡片所写一切内容的语言: 标题与正文, 记录, 报告, 审核报告, 以及传给 `kander notify` 与 `kander resume` 的消息. `kander new` 从配置的 `agent_language` 填写它, 给出 `--language <value>` 时用该值; 取值遵循 `agent_language` 格式. 它在创建时固定并覆盖配置; 没有该字段的旧卡按 `KANDER-AGENTS.md`「语言」回落到当前配置.
-- 手工领取后, 用 `move working --owner <agent>` 写 `OWNER` 与 `STARTED_AT`; `TASK_BRANCH` 通过受控正文入口更新, 无分支用 `N/A`.
-
-  `start` 同时写入相邻的 `SESSION` 与 `WINDOW` 字段, 旧卡缺字段时插在 `OWNER` 之后, 手工领取的卡留空.
+- 手工领取与 `start` 按「受控文档与恢复」与「启动参数与元数据」所述写入 `OWNER`, `STARTED_AT`, `SESSION` 与 `WINDOW`; 手工领取的卡 `SESSION` 与 `WINDOW` 留空. `TASK_BRANCH` 通过受控正文入口更新, 无分支用 `N/A`.
 
   命令迁入 `done/` 时填写 `FINISHED_AT`.
 
   专用的 move 选项在进入 `done/`, `archived/` 或 `trash/` 时原子填写结果.
 
-- 卡片进入 `todo/` 后, `GOAL`, `USER_DECISIONS`, `EXPECTED_OUTCOME`, `ACCEPTANCE_CRITERIA`, `OUT_OF_SCOPE`, `SIZE` 以及任务组关系冻结. 修改任何一项都要先取得用户明确决策.
+- 卡片进入 `todo/` 后, `GOAL`, `USER_DECISIONS`, `EXPECTED_OUTCOME`, `ACCEPTANCE_CRITERIA`, `OUT_OF_SCOPE`, `SIZE` 以及任务组关系冻结. 修改任何一项都要先取得用户明确决策. `THREAT_MODEL` 属于审核任务上下文, 但工具不冻结它; 通过普通 `update` 细化并在 `DISCUSSION` 记录该变更.
 - `OUT_OF_SCOPE` 如实界定任务边界, 不把未确认的扩展目标写入 `ACCEPTANCE_CRITERIA`. 审核模块启用时再按 `KANDER-REVIEW-RULES.md` 的审核契约细化范围.
-- 实施期只追加关键决策, 验证, 环境缺口, commit, 阻塞和下一步, 不复制会话流水. 每轮最多追加一条带日期的条目; 更早的轮次被取代后各压缩为一行摘要. 审核报告, finding 列表与 disposition 以 `reviews/<run_id>/` 与 `dispatches/` 引用, 决不粘贴进卡片正文; 卡片正文超过约 30 KB 表明历史在被复制而非引用. 稳定的架构, API 和长期规则仍须写入仓库文档或项目规则.
+- 实施期只追加关键决策, 验证, 环境缺口, commit, 阻塞和下一步, 不复制会话流水. 每轮最多追加一条带日期的条目; 更早的轮次被取代后各压缩为一行摘要. 审核报告, finding 列表与 disposition 以 `reviews/<run_id>/` 与 `dispatches/` 引用, 决不粘贴进卡片正文; `SUMMARY` (或 `report.md`) 中的未处理项清单每项一行: finding 写明角色, 档位, 状态及其 disposition 记录的卡片相对路径; 未完成的角色, 缺失的报告章节或验证缺口改为写明该 run 的 sidecar 或错误日志, 档位与状态为 `N/A`; 不存在 run 时 (预检失败, 或审核之外的缺口) 写明实际的命令日志或 `IMPLEMENTATION` 验证记录并注明「未产生 run」, 决不写捏造的路径. 全文留在这些产物与用户报告中. 卡片正文超过约 30 KB 表明历史在被复制而非引用. 稳定的架构, API 和长期规则仍须写入仓库文档或项目规则.
 
 ## 审核证据存档
 
@@ -523,6 +480,7 @@ backlog, todo, working, review -> archived            仅限用户授权的终�
 ## 任务规模与分组
 
 - 新卡一律使用目录形态. `new` 写 `SIZE: small` 并包含 IMPLEMENTATION/SUMMARY; `new --large` 写 `SIZE: large`, 完成时要求非空的 report.md. 小卡即使有 report.md 仍要求填好 SUMMARY. 两者进 todo 前都要求 SELF_REVIEW; 大任务与全部组成员另要求 CARD_REVIEW. 进 todo 后修改 SIZE 须走既有的显式契约决策 update 流程. 决不从目录或 report.md 的存在推断规模.
+- 卡片需要 `plan.md` 才能保持可审核时选 `large`: 它涉及多个模块或阶段, 需要发布或回滚计划, 或其验证超出单次定向测试运行. 整个改动与验证能放进一条 `IMPLEMENTATION` 条目的卡是 `small`. `SIZE` 还按「启动参数与元数据」选定执行 Agent 档位.
 
 - 卡片保留可选的任务组字段及依赖记录. 关闭 task_groups 时不自动拆组, 独立单卡仍可使用. 开启时按 KANDER-TASK-GROUP-RULES.md 规划和执行, 必须同时开启 git.
 - 建卡引导属于 KANDER-TASK-INTAKE-RULES.md, 仅在 rules.task_intake=true 时读取; 用户主动操作看板不要求开启它.
@@ -532,7 +490,7 @@ backlog, todo, working, review -> archived            仅限用户授权的终�
 
 - `init` 把全部七个状态中的旧版文件迁移为 `<task-id>/spec.md`, 为无 SIZE 的文件加 `SIZE: small`, 为无 SIZE 的目录加 `SIZE: large`, 并只调整为保持目标所必需的相对 Markdown 链接目的地. ID, 链接标签/标题, 附件及其余全部正文字节保持不变. 既有有效的 SIZE 保留. 重复 init 报告零迁移, 不触碰未变化的卡片内容与修改时间. 无效或重复的 SIZE 拒绝变更与迁移; 只有精确的 `small`/`large` 值有效.
 - 链接重定位同时考虑引用方文档与被引用旧版卡的移动. 它保留 URL query/fragment 语义, 处理行内链接, 图片与引用定义, 包括未使用的定义. 代码 span/块, web URL, 根相对 URL 与纯页面锚点/query 引用保持不变. 只扫描看板内的普通卡片 Markdown 文档; 生产者所有的 reviews/dispatches 子树被排除, 其历史原件保持不可变, 包括 journal 重放期间; 不改写看板外的仓库文件. 不支持的 wiki 链接, HTML href/src/srcset, 无效 URL 与不可移植的反斜杠路径仅在引用方文档移动或可能的目标被映射时才在预检失败. 目标未变的静止历史引用与只含绝对 URL 的 srcset 保持逐字节一致. 失败时指明文档与原因, 保留内容供修正而不猜测改写.
-- `list`, `show`, `check`, TUI 与 `subscribe` 继续读取旧版文件而不迁移. 缺 SIZE 时旧版文件视为 small, 目录视为 large. `check` 对缺 SIZE 的目录要求 init; 其既有状态范围不变. 读取命令决不执行批量迁移.
+- `list`, `show`, `check` 与 `subscribe` 继续读取旧版文件而不迁移. 缺 SIZE 时旧版文件视为 small, 目录视为 large. `check` 对缺 SIZE 的目录要求 init; 其既有状态范围不变. 读取命令决不执行批量迁移.
 - 迁移前暂停所有执行 Agent, 外部编辑器, 通知与归档写入者, 包括不遵循事务协议的旧版二进制. 此维护窗口保持到恢复与迁移完成. Kander 对协作的读写方取得看板独占访问, 但无法核实任意外部进程已停止.
 - 存在任何 working 或 review 卡且需要迁移时, init 默认拒绝并列出受影响的 ID. 只有在所有写入者已暂停后, 才用 `init --maintenance` 确认这些前提. 恢复被中断的活跃卡迁移需要同样的确认. 不自动终止任何 Agent.
 - 迁移先持久化一条 redo 记录, 含完整的新旧路径映射与全部受影响卡片文档, 把每个文件移入同卷 staging, 通过绑定 journal 的 scratch 与原件备份文件写入 SIZE 与链接替换, 发布目录, 再提交 revision 与 journal. 部分完成的替换只在与记录的 after-image 前缀匹配时才续做; 未知残留作为冲突保留. 这些是带内部中间状态的独立步骤, 不是单次原子 rename. 协作的读取方等待维护锁; 进程中断后它们诊断出受管的待处理事务并要求显式 init 恢复. 目录 SIZE 补写与来自既有目录卡的链接 (含 Markdown 附件) 使用同一 journal. 恢复对照 SIZE 插入与记录的路径映射校验已记录的 after-image; 决不从部分迁移的看板重建该映射. 没有读取方自动修复看板. 有效的待处理操作在普通结构扫描前重放. 无需规划迁移时, 普通的杂散非卡片文件产生 check 告警而不阻塞 init; 缺失 spec, 真正重复的 ID, 未知迁移产物与 reparse point 仍失败并保留证据.
@@ -547,7 +505,7 @@ backlog, todo, working, review -> archived            仅限用户授权的终�
   - 约束准确且可执行, 符合用户决策、项目规则及实际接口和环境, 没有互相矛盾的要求.
   - `ACCEPTANCE_CRITERIA` 覆盖目标与成果, 可执行、可判定, 没有遗漏关键条件或引入范围外要求.
 - 在 `DISCUSSION` 中以独立一行 `SELF_REVIEW: <结论>` 记录自审结论与修正项 (ASCII 冒号, 可为列表项); 进入 `todo/` 的门禁校验该行存在. 可依据既有决策修正的内容直接修正; 需要新增或改变用户决策的歧义, 明确列出并等待用户决定, 不自行补成契约.
-- 大任务目录卡与任务组成员卡在自审之外还须独立审卡: 由不共享建卡会话上下文的独立 Agent (新会话或子 Agent) 只读卡片与用户原始需求, 按上述四条出具结论; 创建者修正后在 `DISCUSSION` 以 `CARD_REVIEW: <结论>` 行记录结论与审卡者, 门禁同样校验该行. 工具只校验记录行存在, 审卡者的独立性与结论质量仍由创建者如实保证, 不得由建卡 Agent 自己补写 `CARD_REVIEW:` 行敷衍门禁.
+- 大任务目录卡与任务组成员卡在自审之外还须独立审卡: 由不共享建卡会话上下文的独立 Agent (新会话或子 Agent) 只读卡片与用户原始需求, 按上述四条出具结论; 创建者修正后在 `DISCUSSION` 以 `CARD_REVIEW: <结论>` 行记录结论与审卡者, 门禁同样校验该行. 工具只校验记录行存在, 审卡者的独立性与结论质量仍由创建者如实保证. 创建者只为记录独立 Agent 实际执行过的审卡才写 `CARD_REVIEW:` 行; 没有该审卡而为满足门禁写它是被禁止的.
 
 ## 领取, 启动与协调
 
@@ -564,7 +522,7 @@ kander move <task-id> working --owner <agent>
 
 - `kander move <task-id> working` 仅适用于用户明确要求当前 Agent 执行既有任务卡.
 
-  仅在采用已启用的建卡引导时, 选择「确认计划并走看板」必须用 `start`.
+  仅在采用已启用的建卡引导时, 选择任一「确认计划并走看板」选项时, 启动卡片必须用 `start`, 除非用户明确要求当前 Agent 自己执行某张卡, 此时用上述 `kander move <task-id> working --owner <agent>`.
 
   不得先 `move ... working` 再 `start`.
 
@@ -574,10 +532,12 @@ kander move <task-id> working --owner <agent>
 
   失败后重查, 不建替代卡, 不另加 lock 服务, 数据库或 ID 分配器.
 
+- 回收: `review/` 卡的执行者已停止且用户明确授权新负责人时, 该 Agent 用 `kander move <task-id> working --owner <agent>` 领取该卡. 这只对没有派发绑定的卡 (没有 `DISPATCH_ID`/`EXECUTION_EPOCH` 元数据) 可行: 已绑定的卡拒绝 `--owner`, 且 `dispatch fail|cancel` 不解除绑定, 因此已绑定的卡只能通过「异常恢复」中的接管路径易手. 回收改写 `OWNER` 与 `STARTED_AT`; 因为执行周期按分钟精度从 `STARTED_AT` 导出, 只在 `review progress` 报告 `requirements-needed` 时才视周期已改变 (见「审核证据完成门禁」). 它就是 wrap-up 授权与计划重绑规则所引用的回收. `working/` 卡决不这样回收: 用 `resume --agent` 接管, 它保留 `STARTED_AT`.
+
 **启动检查与回滚**
 
 - `start` 在启动前检查 Agent, launcher 和 TTY.
-- `auto` 先解析当前环境, 再检查实际 launcher:
+- `auto` 按「启动方式」只解析为 `herdr` 或 `tmux`; 启动前检查实际 launcher 的前置条件:
   - `tmux`: 已在 tmux session 内.
   - `tmux-session`: tmux 可用, 启动时选定项目 session 名.
   - `herdr`: `HERDR_ENV=1`, herdr 在 PATH, 且有 `HERDR_WORKSPACE_ID`.
@@ -642,7 +602,7 @@ kander move <task-id> working --owner <agent>
 
 - 根据卡片记录确认实际工作目录, 记录实施与验证及未处理问题.
 
-  完成任务契约和所有适用交付步骤后, 通过 update 写入 `SUMMARY` 或 report.md, 再执行 `kander move <task-id> done --result completed` 和 `kander check`.
+  完成任务契约和所有适用交付步骤后, 通过 update 写入 `SUMMARY` 或 report.md, 满足「审核证据完成门禁」(已封存且每个批次都已关闭的计划, 或无审核适用时的显式 N/A 计划), 再执行 `kander move <task-id> done --result completed` 和 `kander check`. 组内卡按 `KANDER-TASK-GROUP-RULES.md`「执行 Agent 收尾」完成, 并运行定向的 `kander check <task-id>` 而非无目标的 check.
 
 - 失败或暂停时保持实际状态并记录阻塞和解除条件. 不适用的 Git 或审核步骤写 N/A, 不把未执行的验证写为通过.
 - 任务组成员仅在启用 task_groups 和 git 时按 KANDER-TASK-GROUP-RULES.md 执行 review、集成和收尾. 不能把这些门禁应用到独立单卡.
@@ -664,11 +624,11 @@ kander move <task-id> working --owner <agent>
 
 ## 异常恢复
 
-- `working/` 卡中断, 无负责人或长期无进展时, 协调 Agent 先用 `kander notify <task-id> --message <现状与要求>` 通知原执行 Agent.
+- `working/` 卡中断, 无负责人或长期无进展时, 协调 Agent 先通知原执行 Agent. 没有派发绑定的卡用 `kander notify <task-id> --message <现状与要求>`: 不带 `--kind` 的未绑定消息; 之后的任何 fix, sync 或 wrap-up 轮次另行带其 `--kind` 派发. 已绑定的卡 (已记录 `DISPATCH_ID`) 旧版消息无法恢复会话: 先读 `kander dispatch show`. 派发仍为 prepared 或 delivery-unknown 且接受截止时间未过时, 按「持久派发」用同一 ID 与其原消息重试 (`notify --dispatch-id <id> --message-file <original>`). 派发一旦已接受, 同 ID 的 `notify` 只返回回执, 不恢复任何东西; 执行者被证明已停止时, 用户先用 `dispatch fail <task-id> <dispatch-id> <dispatch-revision> <reason>` 处置该轮, 然后才以新 ID 创建同 kind 的新派发: `fix` 重新绑定其 finding 与迄今写出的每个作者原件, `wrap-up` 重新绑定集成证据, `sync` 不带证据并在消息中引用既有的 disposition 记录.
 
   命令自行选择直投或恢复, 非零退出时由用户决定交接或终止.
 
-  用户决定换 Agent 时只用 `kander resume --agent <name> <task-id> --message <现状与要求>` 建立接管新会话, 不手工迁移会话、不再次 `start`.
+  用户决定换 Agent 时只用 `resume --agent <name>` 建立接管新会话: 未绑定的卡用 `kander resume --agent <name> <task-id> --message <现状与要求>`; 派发尚未接受且未过截止时间的已绑定卡用 `kander resume --agent <name> --dispatch-id <id> --message-file <original> <task-id>`, 它轮换 epoch; 执行者已停止的已接受轮次, 则通过 `resume --agent` 附其 `--kind` 及 (`fix` 或 `wrap-up` 的) `--evidence-file` 创建上述新派发. 不手工迁移会话、不再次 `start`.
 
   其他 Agent 不得自行接管, 迁移或归档.
 
@@ -689,7 +649,7 @@ kander coordinator reconcile <observations.json>
 
 ## 审核证据完成门禁
 
-活跃执行周期在 `move done` 前要求显式的审核计划, 即使 REVIEWS 为空或没有 Reviewer 运行过. 将每个角色记录为必需或 N/A, 附实际原因与规则依据. 禁用审核的工作流记录显式 N/A 并关闭计划; 它们不加载或执行已禁用的审核工作流模块. 已完成且没有计划的历史卡片仍可作为 legacy-untracked 读取, 决不作为捏造的历史 PASS.
+执行周期是对一张卡的一次领取, 由其任务 ID 与 `STARTED_AT` (分钟精度) 标识: `start` 与 `move working --owner` 写入 `STARTED_AT`, `resume --agent` 保留它. 活跃执行周期在 `move done` 前要求显式的审核计划, 即使 REVIEWS 为空或没有 Reviewer 运行过. 将每个角色记录为必需或 N/A, 附实际原因与规则依据. 审核被禁用或没有任何触发时, 最小序列为: `review plan` 附一个从审核 base 到最终交付 commit 的已封存批次, 把四个角色都写为 `N/A: <reason and rule basis>`, 对该批次 `review aggregate`, `review close` 绑定其视图哈希, 再 `move done`; 这不加载任何已禁用的审核模块. 计划至少有一个批次, 其成员在创建时固定, 每个周期一张卡最多属于一个计划. 只有在每个成员都处于 `working/` 或 `review/` 时才能创建计划, 因此组计划在最后一个成员启动后创建, 且计划存在前不运行任何审核批次: 计划在首个批次的首次 run 前命名它, 之后的每个批次都在其前驱关闭后, 自身首次 run 前用 `extend-plan` 追加 (`extend-plan` 不能收编已运行过的批次). 关闭批次要求它已规划且 worktree 在该批次的最终目标处干净, `review advance` 也要求已规划的批次. 修复轮次推进批次的运行时目标, 而计划保留批次加入时记录的目标; 历史未被改写时, wrap-up 证据把首个已规划批次的 base 与最后一个批次的该记录目标绑定为其 `source_commit`, 因此主控另按 `KANDER-GIT-RULES.md` 用 `git merge-base --is-ancestor` 校验已关闭最终目标的祖先关系, 并在 wrap-up 通知中写明两个 commit. 历史已被改写且最后一个批次在记录后又推进过时, 补丁比较只覆盖记录范围而会遗漏修复: 不要绑定它; 停止, 保持组状态并报告. 已完成且没有计划的历史卡片仍可作为 legacy-untracked 读取, 决不作为捏造的历史 PASS.
 
 受控的审核证据命令, 全部在既有的单一 review 入口下:
 
@@ -713,4 +673,4 @@ check 与完成使用同一结构校验器. 等待结论的有效当前计划为
 
 对每个角色都显式 N/A 的非 Git 项目, 计划可对 base 与 target_commit 都使用 `N/A`. 关闭时把 Git 记为不适用, 不声称已校验 commit. 任何必需角色仍需要真实的 commit 目标.
 
-- 用 `move working --owner` 重新领取已有计划的卡可能改变其执行周期绑定. `review progress` 随后报告 `requirements-needed` 与完整的 `rebind_cycles` 映射. 用 `review extend-plan` 附既有计划 ID, 期望 revision, 该映射, author 与 basis, 为整个计划恢复相同的要求. 此操作不能改变批次, 封存, 角色要求, 成员状态或更早的证据. 旧的失败与 finding 仍有约束力; 禁止另建计划来丢弃它们. 后继 OWNER 可对被分派的 finding 追加自己的 disposition, 保留旧作者不可变的原件与记录谱系. advance 与 extend-plan 使用计划的精确 CWD.
+- 重新领取已有计划的卡 (见「领取, 启动与协调」) 可能改变其执行周期. `review progress` 随后报告 `requirements-needed` 与完整的 `rebind_cycles` 映射. 用 `review extend-plan` 附既有计划 ID, 期望 revision, 该映射, author 与 basis, 为整个计划恢复相同的要求. 此操作不能改变批次, 封存, 角色要求, 成员状态或更早的证据. 旧的失败与 finding 仍有约束力; 禁止另建计划来丢弃它们. 后继 OWNER 可对被分派的 finding 追加自己的 disposition, 保留旧作者不可变的原件与记录谱系. advance 与 extend-plan 使用计划的精确 CWD.

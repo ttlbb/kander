@@ -46,7 +46,8 @@
 
 - 使用看板命令时需要读 `KANDER-KANBAN-RULES.md`.
 - `task_groups` 依赖 `git`.
-- 关 `task_intake` 照样能手动建卡并跑单卡.
+- `review` 只在 `code` 也开启时才读取 `KANDER-CODE-RULES.md`「交付自检」; `code` 关闭时, 改由 `KANDER-REVIEW-RULES.md`「前置条件与执行」说明作者在审核前检查什么.
+- 关 `task_intake` 时不呈现计划选项, 卡片手动创建; `task_groups` 开启时仍可组成任务组.
 - 关 `git` 后单卡沿用用户自己的工作目录、分支、交付流程.
 - 关 `review` 后不自动要审核, 仍可明确调 `kander review`.
 - 关 `reporting` 不免除真实填卡片结果和必要执行记录.
