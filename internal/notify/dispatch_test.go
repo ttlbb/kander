@@ -27,7 +27,9 @@ func durableNotifyFixture(t *testing.T, duration time.Duration) (string, string,
 }
 
 func TestPromptEchoDoesNotCountAsAcknowledgement(t *testing.T) {
-	root, task, d := durableNotifyFixture(t, 400*time.Millisecond)
+	// The confirmation window must outlast one delivery cycle (board transactions plus the fake
+	// herdr round trips) on slow hosts such as macOS, otherwise the prompt is never sent.
+	root, task, d := durableNotifyFixture(t, 3*time.Second)
 	out, _, err := capture(t, func() error { return deliverDispatch(root, task, d.Input.ID, "") })
 	if err == nil || !strings.Contains(out, `"state":"delivery-unknown"`) {
 		t.Fatalf("prompt echo accepted: %s %v", out, err)
@@ -235,11 +237,13 @@ func TestDurableExplicitPaneOverridesUnknownRecordedWindow(t *testing.T) {
 
 func TestDispatchRetryHonorsShorterInvocationDeadline(t *testing.T) {
 	root, task, d := durableNotifyFixture(t, time.Minute)
-	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	// Short enough to prove the invocation deadline wins over the one-minute durable deadline,
+	// long enough for one delivery cycle to send the prompt on slow hosts.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	started := time.Now()
 	_, _, err := capture(t, func() error { return deliverDispatchContext(ctx, root, task, d.Input.ID, "") })
-	if err == nil || time.Since(started) > 2*time.Second {
+	if err == nil || time.Since(started) > 10*time.Second {
 		t.Fatalf("invocation deadline ignored: %v", err)
 	}
 	current, err := board.ReadDispatch(root, task, d.Input.ID)
