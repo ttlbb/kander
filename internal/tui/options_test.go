@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -313,6 +314,7 @@ func TestInterfaceWriteDoesNotCommitOtherSessionEdits(t *testing.T) {
 	panel.session.SetReviewer("PM", "claude")
 	panel.markDirty()
 	app.Theme = "light"
+	panel.session.Config.TUI.Theme = "light"
 	panel.persistUI()
 	if app.PrefsError != "" {
 		t.Fatal(app.PrefsError)
@@ -570,14 +572,15 @@ func TestExecutionModelInputSavesWhenAgentsMatch(t *testing.T) {
 func TestReviewModelInputSavesPMRole(t *testing.T) {
 	_, panel := openPanel(t)
 	pumpPanel(panel, panel.dispatch(sectionReview))
-	if len(panel.bind.formFields) < 3 {
-		t.Fatal("review section should have reviewer, stage, and model fields")
+	if len(panel.bind.formFields) < 4 {
+		t.Fatal("review section should have reviewer, two scale stages, and model fields")
 	}
 	before := panel.session.Config.Models.ReviewRoles["PM"]["model"]
 	drivePanel(panel, keyMsg("down"))
 	drivePanel(panel, keyMsg("down"))
-	if panel.form.GetFocusedField() != panel.bind.formFields[2] {
-		t.Fatal("two downs should focus the PM model input")
+	drivePanel(panel, keyMsg("down"))
+	if panel.form.GetFocusedField() != panel.bind.formFields[3] {
+		t.Fatal("three downs should focus the PM model input after the two scale stages")
 	}
 	typeRune(panel, 'X')
 	want := before + "X"
@@ -595,6 +598,34 @@ func TestReviewModelInputSavesPMRole(t *testing.T) {
 	}
 	if got := loaded.Models.ReviewRoles["PM"]["model"]; got != want {
 		t.Fatalf("disk PM model=%q want %q", got, want)
+	}
+}
+
+func TestReviewStagePerScaleSaves(t *testing.T) {
+	_, panel := openPanel(t)
+	pumpPanel(panel, panel.dispatch(sectionReview))
+	before, err := config.ReviewStageFor(panel.session.Config, "large", "PM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	drivePanel(panel, keyMsg("down"))
+	drivePanel(panel, keyMsg("right"))
+	after, err := config.ReviewStageFor(panel.session.Config, "large", "PM")
+	if err != nil || after == before {
+		t.Fatalf("large PM stage did not change: %s -> %s (%v)", before, after, err)
+	}
+	small, err := config.ReviewStageFor(panel.session.Config, "small", "PM")
+	if err != nil || small != before {
+		t.Fatalf("small PM stage changed unexpectedly: %s (%v)", small, err)
+	}
+	drivePanel(panel, keyMsg("enter"))
+	loaded, err := config.Load(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := config.ReviewStageFor(loaded, "large", "PM")
+	if err != nil || got != after {
+		t.Fatalf("disk large PM=%s want %s (%v)", got, after, err)
 	}
 }
 
@@ -620,5 +651,112 @@ func TestExecutableInputsDeduplicateAndPersist(t *testing.T) {
 	agent := loaded.KanbanAgents["large"]
 	if loaded.Agents[agent].ProcessName != "node" {
 		t.Fatal(loaded.Agents)
+	}
+}
+
+func writeTempOverlay(t *testing.T, dir string, payload map[string]any) (string, []byte) {
+	t.Helper()
+	path := filepath.Join(dir, config.OverlayFilename)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path, data
+}
+
+func TestOptionsPanelShowsOverlayNotice(t *testing.T) {
+	dir := t.TempDir()
+	writeTempOverlay(t, dir, map[string]any{"kanban_agent": "claude"})
+	t.Chdir(dir)
+	_, panel := openPanel(t)
+	panel.detectOverlayNotice()
+	_, view := panel.view()
+	plain := ansi.Strip(view)
+	if !strings.Contains(plain, ".kander-config") {
+		t.Fatalf("missing overlay notice:\n%s", plain)
+	}
+}
+
+func TestOptionsSaveLeavesOverlayIsolated(t *testing.T) {
+	dir := t.TempDir()
+	_, original := writeTempOverlay(t, dir, map[string]any{
+		"kanban_agent": "claude",
+		"tui":          map[string]any{"theme": "dark", "columns": 2},
+	})
+	t.Chdir(dir)
+	_, panel := openPanel(t)
+	pumpPanel(panel, panel.dispatch(sectionReview))
+	before := panel.session.Config.Reviewers["PM"]
+	drivePanel(panel, keyMsg("right"))
+	after := panel.session.Config.Reviewers["PM"]
+	if after == before {
+		t.Fatal("right arrow did not change the reviewer")
+	}
+	drivePanel(panel, keyMsg("enter"))
+	data, err := os.ReadFile(filepath.Join(dir, config.OverlayFilename))
+	if err != nil || string(data) != string(original) {
+		t.Fatalf("overlay bytes changed: %s", data)
+	}
+	scopeCfg, err := config.LoadScope(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scopeCfg.KanbanAgent == "claude" {
+		t.Fatal("TUI save wrote overlay-only kanban_agent into the scope file")
+	}
+	if scopeCfg.TUI.Theme == "dark" || scopeCfg.TUI.Columns == 2 {
+		t.Fatalf("TUI save wrote overlay-only tui values into the scope file: %+v", scopeCfg.TUI)
+	}
+	if scopeCfg.Reviewers["PM"] != after {
+		t.Fatalf("scope PM=%s want %s", scopeCfg.Reviewers["PM"], after)
+	}
+	merged, err := config.Load(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if merged.KanbanAgent != "claude" {
+		t.Fatalf("runtime merge lost overlay: %s", merged.KanbanAgent)
+	}
+	if merged.TUI.Theme != "dark" || merged.TUI.Columns != 2 {
+		t.Fatalf("runtime merge lost overlay tui: %+v", merged.TUI)
+	}
+}
+
+func TestSaveColumnsLeavesOverlayTUIIsolated(t *testing.T) {
+	dir := t.TempDir()
+	_, original := writeTempOverlay(t, dir, map[string]any{
+		"tui": map[string]any{"theme": "dark", "columns": 6},
+	})
+	t.Chdir(dir)
+	_ = newTestSession(t)
+	if _, err := saveColumns(2); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, config.OverlayFilename))
+	if err != nil || string(data) != string(original) {
+		t.Fatalf("overlay bytes changed: %s", data)
+	}
+	scopeCfg, err := config.LoadScope(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scopeCfg.TUI.Theme == "dark" {
+		t.Fatal("saveColumns wrote overlay-only theme into the scope file")
+	}
+	if scopeCfg.TUI.Columns != 2 {
+		t.Fatalf("scope columns=%d", scopeCfg.TUI.Columns)
+	}
+	merged, err := config.Load(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if merged.TUI.Theme != "dark" {
+		t.Fatalf("runtime merge lost overlay theme: %s", merged.TUI.Theme)
+	}
+	if merged.TUI.Columns != 6 {
+		t.Fatalf("runtime merge lost overlay columns: %d", merged.TUI.Columns)
 	}
 }

@@ -71,9 +71,9 @@ kander coordinator show|claim|reconcile ...       # 见「协调者检查点」
 kander review ...                                 # 单一 review 入口: KANDER-BASE-RULES.md 与「审核证据完成门禁」
 ```
 
-`kander show` 在卡片正文前输出当前状态与绝对路径, 供写卡前重新定位; `kander move` 成功输出迁移后的新路径. `kander show --json` 返回已提交的 `text`, `revision`, `operation_id` 与 `entry` 位置. `kander guard-write` 是建议性的写入前检查: 放行退出 0, 拒绝非零, 但该检查与外部写入不是原子的. 它不覆盖任意 shell 命令, 外部工具或内部写入. Agent 必须用 `update` 编辑卡片.
+`kander config --json` 输出合并后的有效配置. 不带 `--json` 时输出同样的摘要, 存在项目 `.kander-config.json` 时额外加一行该文件的绝对路径. `kander show` 在卡片正文前输出当前状态与绝对路径, 供写卡前重新定位; `kander move` 成功输出迁移后的新路径. `kander show --json` 返回已提交的 `text`, `revision`, `operation_id` 与 `entry` 位置. `kander guard-write` 是建议性的写入前检查: 放行退出 0, 拒绝非零, 但该检查与外部写入不是原子的. 它不覆盖任意 shell 命令, 外部工具或内部写入. Agent 必须用 `update` 编辑卡片.
 
-`kander pick [task-id]` 经与 `kander move <task-id> todo` 相同的门禁把 `backlog/` 卡迁入 `todo/`; 两者可互换. 不给任务 ID 时列出 `backlog/` 卡并询问选哪一张; 自动化传入 ID. 状态名之后的 move 选项见「入口与文档」与「持久派发」. `kander review` 之后的 `plan`, `extend-plan`, `assign`, `disposition`, `map-legacy`, `aggregate`, `advance`, `close` 与 `progress` 选择证据子命令; 可选的 Reviewer 参数只接受 `KANDER-REVIEW-RULES.md` 中的四个 Reviewer 名.
+`kander pick [task-id]` 经与 `kander move <task-id> todo` 相同的门禁把 `backlog/` 卡迁入 `todo/`; 两者可互换. 不给任务 ID 时列出 `backlog/` 卡并询问选哪一张; 自动化传入 ID. 状态名之后的 move 选项见「入口与文档」与「持久派发」. `kander review` 之后的 `plan`, `extend-plan`, `assign`, `disposition`, `map-legacy`, `aggregate`, `advance`, `close` 与 `progress` 选择证据子命令; 可选的 Reviewer 参数只接受 `KANDER-REVIEW-RULES.md` 中的五个 Reviewer 名.
 
 新写使用 `@kander_session`、`@kander_project` 与 `# kander-notify:`.
 

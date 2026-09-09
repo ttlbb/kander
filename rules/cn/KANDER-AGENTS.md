@@ -12,8 +12,12 @@
 | 命令根   | `~/.local/bin`                 | `<主 worktree>/.kander/bin`         |
 | 配置文件 | `~/.config/kander/config.json` | `<主 worktree>/.kander/config.json` |
 | 资源目录 | `~/.local/share/kander`        | `<主 worktree>/.kander/share`       |
+| 项目覆盖层 | `<主 worktree>/.kander-config.json` (非 Git 时: 从 cwd 逐级向上找到的第一个文件) | 同左 |
 
-- 全部设置存配置文件.
+- 作用域设置存配置文件. 可选的项目覆盖层在读取时合并到其之上.
+- 运行时优先级为 项目覆盖层 > 作用域配置 (`KANDER_CONFIG` 或安装作用域的 `config.json`) > 默认值.
+- 写入 (`Save`, `Update`, `kander doctor` 修复, 选项面板与安装器) 只更新作用域的 `config.json`. 覆盖层的值绝不回写.
+- 覆盖层可设置 `agents` 的可执行路径与 argv 模板. 接受它与检出并运行本仓库自身代码属于同一信任级别.
 - 项目安装的载荷只在主树 `.kander/`, 任务 worktree 共享, 不建副本、镜像或符号链接.
 - 下文及各分册中的 `kander` 均指当前作用域入口. 全局安装可用命令根绝对路径或已加入 PATH 的 `kander`; 项目安装必须用 `<命令根>/kander` 的绝对路径 (Windows 为 `<命令根>\kander`), 不替换为 PATH 中的全局命令.
 

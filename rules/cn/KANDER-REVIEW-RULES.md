@@ -329,7 +329,7 @@
 
 除「审核档案」和白名单触发条件外, 每个角色是否运行还受默认环节策略约束.
 
-配置文件的 `review_stages` 为四角色各指定 `auto`, `skip` 或 `required`, 缺省为 `auto`.
+配置文件的 `review_stages` 为四角色各指定 `auto`, `skip` 或 `required`, 按任务规模存放为 `review_stages.large` 与 `review_stages.small`. 旧的扁平 `{role: mode}` 对象仍被接受, 对两个规模同时生效; 新写入使用两规模形式. 缺失的规模或角色缺省为 `auto`.
 
 用命令根下的 `kander config` 查看.
 
@@ -337,7 +337,7 @@
 
 1. 当前任务的用户指令.
 2. 离目标文件最近的项目级 `AGENTS.md` 或 `CLAUDE.md`; 未指定时取用户自己的全局规则.
-3. 配置文件中该角色的 `review_stages` 取值.
+3. 该卡 `SIZE` 规模对应的 `review_stages` 取值; 任务组批次混合规模时用 `large` 规模.
 4. 审核档案与安全角色触发条件 (仅当第 3 档为 `auto` 时生效).
 
 各档语义:

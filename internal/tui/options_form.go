@@ -460,9 +460,10 @@ func minColumnWidthChoices(current int) []int {
 const modelIndent = "  "
 
 // Keys used to locate a selector after a section rebuild.
-func scaleFocusKey(scale string) string    { return "scale:" + scale }
-func roleFocusKey(role string) string      { return "role:" + role }
-func interfaceFocusKey(name string) string { return "ui:" + name }
+func scaleFocusKey(scale string) string       { return "scale:" + scale }
+func roleFocusKey(role string) string         { return "role:" + role }
+func stageFocusKey(role, scale string) string { return "stage:" + role + ":" + scale }
+func interfaceFocusKey(name string) string    { return "ui:" + name }
 
 func (p *optionsPanel) executionGroup(bind *formBinding) *huh.Group {
 	session := p.session
@@ -556,15 +557,22 @@ func (p *optionsPanel) reviewGroup(bind *formBinding) *huh.Group {
 			Options(toOptions(session.ReviewerChoicesFor(value))...).
 			Value(bind.reviewers[role]).
 			Inline(true))
-		// The stage and the model settings of that role follow immediately, with no blank line in between.
-		stage := cfg.ReviewStages[role]
-		bind.stages[role] = &stage
-		bind.addField(huh.NewSelect[string]().
-			Title(modelIndent + t("tui.review_stage", role)).
-			// The value line is indented along with the title: a Select puts its value on its own line, so indenting the title alone would look ragged.
-			Options(reviewStageOptions()...).
-			Value(bind.stages[role]).
-			Inline(true))
+		// Each role keeps a large and a small stage selector, matching kanban_agents.
+		for _, scale := range config.TaskScales {
+			stage, err := config.ReviewStageFor(cfg, scale, role)
+			if err != nil {
+				stage = "auto"
+			}
+			key := stageFocusKey(role, scale)
+			bind.stages[key] = &stage
+			bind.fieldIndex[key] = bind.focusable
+			bind.addField(huh.NewSelect[string]().
+				Title(modelIndent + t("tui.review_stage", t("config."+scale))).
+				// The value line is indented along with the title: a Select puts its value on its own line, so indenting the title alone would look ragged.
+				Options(reviewStageOptions()...).
+				Value(bind.stages[key]).
+				Inline(true))
+		}
 		for _, field := range p.modelInputs(bind, session.ReviewModelFieldsFor(role)) {
 			bind.addField(field)
 		}
@@ -637,10 +645,20 @@ func (b *formBinding) apply(p *optionsPanel) {
 				p.rebuildAt(roleFocusKey(role))
 			}
 		}
-		for role, value := range b.stages {
-			if value != nil && session.Config.ReviewStages[role] != *value {
-				session.SetReviewStage(role, *value)
-				p.markDirty()
+		for _, role := range config.ReviewRoles {
+			for _, scale := range config.TaskScales {
+				value := b.stages[stageFocusKey(role, scale)]
+				if value == nil {
+					continue
+				}
+				current, err := config.ReviewStageFor(session.Config, scale, role)
+				if err != nil {
+					current = ""
+				}
+				if current != *value {
+					session.SetReviewStage(scale, role, *value)
+					p.markDirty()
+				}
 			}
 		}
 		b.applyModels(p)
@@ -663,8 +681,13 @@ func (b *formBinding) applyModels(p *optionsPanel) {
 func (b *formBinding) applyInterface(p *optionsPanel) {
 	app := p.app
 	changed := false
+	var scopeTUI config.TUI
+	if p.session != nil && p.session.Config != nil {
+		scopeTUI = p.session.Config.TUI
+	}
 	if containsString(themes, b.theme) && app.Theme != b.theme {
 		app.Theme = b.theme
+		scopeTUI.Theme = b.theme
 		changed = true
 		// Huh caches the body during Update, and that cache still uses the old theme at this point.
 		// Reuse the section rebuild path so the current frame takes effect and focus stays on the theme selector.
@@ -672,24 +695,31 @@ func (b *formBinding) applyInterface(p *optionsPanel) {
 	}
 	if count := clampColumns(b.columns); app.Columns != count {
 		app.Columns = count
+		scopeTUI.Columns = count
 		changed = true
 	}
 	if width := clampMinColumnWidth(b.minWidth); app.MinColumnWidth != width {
 		app.MinColumnWidth = width
+		scopeTUI.MinColumnWidth = width
 		changed = true
 	}
 	if refresh := clampRefresh(b.refresh); app.RefreshSecs != refresh {
 		app.RefreshSecs = refresh
+		scopeTUI.Refresh = refresh
 		changed = true
 	}
 	if app.Model.Single != b.single {
 		app.Model.Single = b.single
+		scopeTUI.Single = b.single
 		changed = true
 		p.rebuildAt(interfaceFocusKey("single"))
 	}
 	if app.Model.ShowArchived != b.archived {
 		app.Model.ToggleArchived()
 		changed = true
+	}
+	if p.session != nil && p.session.Config != nil {
+		p.session.Config.TUI = scopeTUI
 	}
 	// UI preferences reach config.json as soon as they change, so returning with Esc loses nothing.
 	if changed {
